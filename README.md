@@ -1,8 +1,10 @@
-﻿# WellProfitAI
+# WellProfitAI
 
 Sistema de 4 agentes que decide si conviene perforar un **pozo vertical** (GO / CONDITIONAL / NO-GO). Datos 100% sinteticos, valores en USD.
 
 Cadena: `IngestionAgent -> GeologicalAgent -> ForecastingAgent -> EconomicAgent`
+
+Antes de la cadena, el sistema recomienda **donde perforar** (latitud/longitud) y estima la geologia de ese punto a partir del historico de pozos (`src/models/location_recommender.py`). El usuario elige cuenca, formacion, estimulacion y WTI; la geologia se puede ajustar a mano.
 
 ## Instalacion (Python 3.12, desde la raiz del proyecto)
 
@@ -31,7 +33,7 @@ Si el .pkl no carga (otra version de xgboost/scikit-learn), correr `train_model.
 ## Estructura
 
 - `src/data/` generador del dataset sintetico y CSVs
-- `src/models/` busqueda de pozos analogos y entrenamiento del modelo de EUR
+- `src/models/` pozos analogos, recomendador de ubicacion y entrenamiento del modelo de EUR
 - `src/agents/` un archivo por agente
 - `src/ui/app.py` frontend Streamlit con fallback a datos mock
 - `tests/` tests de cada modulo

@@ -86,6 +86,8 @@ def run(well: dict, dataset_path: str = "src/data/wells.csv") -> dict:
 
     return {
         "well_id": well.get("well_id"),
+        "location": ({"latitude": well["latitude"], "longitude": well["longitude"]}
+                     if well.get("latitude") is not None and well.get("longitude") is not None else None),
         "reservoir_score": round(total, 1),
         "risk_level": risk_level(total),
         "porosity_score": round(scores["porosity"], 1),
@@ -94,7 +96,7 @@ def run(well: dict, dataset_path: str = "src/data/wells.csv") -> dict:
         "skin_score": round(scores["skin"], 1),
         "depth_score": round(scores["depth"], 1),
         "analog_wells": [
-            {k: a[k] for k in ("well_id", "well_name", "basin", "formation", "eur_mmboe", "distance")}
+            {k: a[k] for k in ("well_id", "well_name", "basin", "formation", "eur_mmboe", "distance", "latitude", "longitude")}
             for a in analogs
         ],
         # Percentiles estadísticos literales: P10 = percentil 10 (bajo), P90 = percentil 90 (alto)
@@ -115,3 +117,10 @@ class GeologicalAgent:
 
     def run(self, well: dict) -> dict:
         return run(well, dataset_path=self.dataset_path)
+
+    def recommend_location(self, basin: str, formation: str, stimulation_type: str, wti_price_usd: float,
+                           acid_volume_m3: float | None = None, proppant_tonnes: float | None = None) -> dict:
+        """Recomienda la ubicación (lat/lon) y la geología estimada a partir del histórico de pozos."""
+        from src.models.location_recommender import recommend  # import tardío: evita ciclo con el recomendador
+
+        return recommend(basin, formation, stimulation_type, wti_price_usd, acid_volume_m3, proppant_tonnes)

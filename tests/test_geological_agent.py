@@ -25,7 +25,9 @@ def test_run_output():
     assert r["reservoir_score"] == 55.0 and r["risk_level"] == "medium"
     assert r["well_id"] == "NEW-1"
     assert len(r["analog_wells"]) == 5
-    assert set(r["analog_wells"][0]) == {"well_id", "well_name", "basin", "formation", "eur_mmboe", "distance"}
+    assert set(r["analog_wells"][0]) == {"well_id", "well_name", "basin", "formation", "eur_mmboe", "distance",
+                                                  "latitude", "longitude"}
+    assert r["location"] is None
     s = r["analog_eur_stats"]
     assert s["p10"] <= s["p50"] <= s["p90"]
 

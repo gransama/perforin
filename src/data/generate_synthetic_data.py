@@ -1,4 +1,4 @@
-﻿"""Genera 200 pozos verticales sintéticos + perfiles de producción Arps (30 años). Costos en USD.
+"""Genera 200 pozos verticales sintéticos + perfiles de producción Arps (30 años). Costos en USD.
 
 Sin pozos horizontales, sin longitud lateral, sin fracturamiento multi-etapa.
 Uso (desde la raíz del proyecto):  python src/data/generate_synthetic_data.py
@@ -22,17 +22,61 @@ EUR_MIN, EUR_MAX = 0.05, 0.8
 CAPEX_MIN, CAPEX_MAX = 1.5, 7.0
 OUT_DIR = Path(__file__).resolve().parent
 
+# Cada cuenca: caja geográfica (lat_min, lat_max, lon_min, lon_max), zonas buenas ("sweet spots") como
+# (lat, lon, sigma_km) y 'grad' = peso (lat, lon) del gradiente de profundidad dentro de la caja.
 BASINS = {
     "Permian":    dict(n=80, formations=["Wolfcamp", "Bone Spring"], depth=(1500, 3500),
-                       phi=8.0, k=0.5, di=(0.04, 0.10), b=(0.3, 1.0), loc=(32.2, -102.3), code="PRM"),
+                       phi=8.0, k=0.5, di=(0.04, 0.10), b=(0.3, 1.0), code="PRM",
+                       box=(32.0, 33.2, -103.2, -101.6), grad=(0.5, 0.5),
+                       hotspots=[(32.6, -102.4, 28), (32.3, -102.9, 20)]),
     "Eagle Ford": dict(n=50, formations=["Eagle Ford Shale"], depth=(1200, 3200),
-                       phi=7.0, k=0.1, di=(0.05, 0.12), b=(0.4, 1.1), loc=(28.9, -98.3), code="EGF"),
+                       phi=7.0, k=0.1, di=(0.05, 0.12), b=(0.4, 1.1), code="EGF",
+                       box=(28.2, 29.6, -99.2, -97.8), grad=(0.0, 1.0),
+                       hotspots=[(28.9, -98.5, 30)]),
     "Delaware":   dict(n=40, formations=["Wolfcamp", "3rd Bone Spring"], depth=(1800, 4200),
-                       phi=6.0, k=0.05, di=(0.05, 0.11), b=(0.5, 1.2), loc=(31.6, -103.9), code="DEL"),
+                       phi=6.0, k=0.05, di=(0.05, 0.11), b=(0.5, 1.2), code="DEL",
+                       box=(30.8, 32.3, -104.7, -103.4), grad=(0.6, 0.4),
+                       hotspots=[(31.6, -104.0, 28), (31.2, -103.8, 18)]),
     "Midland":    dict(n=30, formations=["Wolfcamp", "Spraberry"], depth=(1200, 3000),
-                       phi=7.5, k=0.3, di=(0.04, 0.10), b=(0.3, 0.9), loc=(31.9, -102.0), code="MID"),
+                       phi=7.5, k=0.3, di=(0.04, 0.10), b=(0.3, 0.9), code="MID",
+                       box=(31.0, 31.9, -102.7, -101.3), grad=(0.3, 0.7),
+                       hotspots=[(31.5, -102.0, 24)]),
 }
+MIN_SPACING_KM = 0.8   # separación mínima entre pozos (no se perfora encima de otro)
 
+
+def km_offsets(lat, lat0, lon0):
+    """Distancia (km) de cada punto a (lat0, lon0), aproximación plana (suficiente a esta escala)."""
+    return np.hypot((lat[0] - lat0) * 111.0, (lat[1] - lon0) * 111.0 * np.cos(np.radians(lat0)))
+
+
+def quality(basin: str, lat: float, lon: float) -> float:
+    """Calidad de roca 0-1 en un punto: máxima gaussiana de las zonas buenas sobre un piso de 0.12."""
+    best = 0.0
+    for hlat, hlon, sig in BASINS[basin]["hotspots"]:
+        d = km_offsets((lat, lon), hlat, hlon)
+        best = max(best, float(np.exp(-d ** 2 / (2 * sig ** 2))))
+    return 0.12 + 0.88 * best
+
+
+def sample_locations(rng, basin: str, n: int) -> list[tuple[float, float]]:
+    """70% de los pozos se agrupan alrededor de las zonas buenas (donde se perfora más), 30% repartidos."""
+    s = BASINS[basin]
+    la0, la1, lo0, lo1 = s["box"]
+    pts: list[tuple[float, float]] = []
+    while len(pts) < n:
+        if rng.random() < 0.7:
+            hlat, hlon, sig = s["hotspots"][rng.integers(len(s["hotspots"]))]
+            lat = hlat + rng.normal(0, 1.3 * sig) / 111.0
+            lon = hlon + rng.normal(0, 1.3 * sig) / (111.0 * np.cos(np.radians(hlat)))
+        else:
+            lat, lon = rng.uniform(la0, la1), rng.uniform(lo0, lo1)
+        if not (la0 <= lat <= la1 and lo0 <= lon <= lo1):
+            continue
+        if any(km_offsets((lat, lon), p[0], p[1]) < MIN_SPACING_KM for p in pts):
+            continue
+        pts.append((float(lat), float(lon)))
+    return pts
 
 def trunc_normal(rng, mean, sd, lo, hi) -> float:
     a, b = (lo - mean) / sd, (hi - mean) / sd
@@ -118,23 +162,28 @@ def generate(seed: int = SEED) -> tuple[pd.DataFrame, pd.DataFrame, int]:
     rng.shuffle(stims)
     plan = [b for b, s in BASINS.items() for _ in range(s["n"])]
     rng.shuffle(plan)
+    locs = {b: sample_locations(rng, b, BASINS[b]["n"]) for b in BASINS}
 
-    # Pasada 1: geología -> IP bruto sin k
+    # Pasada 1: ubicación -> calidad de roca q -> geología -> IP bruto sin k
     geo = []
     for basin in plan:
         s = BASINS[basin]
         lo, hi = s["depth"]
-        phi = trunc_lognormal(rng, s["phi"], 0.30, 3.0, 15.0)
-        perm = trunc_lognormal(rng, s["k"], 1.00, 0.001, 10.0)
-        pay = trunc_normal(rng, 20, 10, 5, 50)
-        skin = trunc_normal(rng, 5, 5, -2, 20)
+        la0, la1, lo0, lo1 = s["box"]
+        lat, lon = locs[basin].pop()
+        q = quality(basin, lat, lon)                       # 0.12 (zona pobre) ... 1.0 (centro de una zona buena)
+        phi = float(np.clip(s["phi"] * (0.75 + 0.5 * q) * rng.lognormal(0, 0.12), 3.0, 15.0))
+        perm = float(np.clip(s["k"] * np.exp(1.8 * (q - 0.55)) * rng.lognormal(0, 0.5), 0.001, 10.0))
+        pay = float(np.clip(9 + 19 * q + rng.normal(0, 6), 5, 50))
+        sw = float(np.clip(48 - 18 * q + rng.normal(0, 3), 20, 55))
+        u = np.clip(s["grad"][0] * (lat - la0) / (la1 - la0) + s["grad"][1] * (lon - lo0) / (lo1 - lo0), 0, 1)
+        depth = float(np.clip(lo + (hi - lo) * (0.15 + 0.7 * u + rng.normal(0, 0.06)), lo, hi))
+        skin = trunc_normal(rng, 5, 5, -2, 20)             # daño de pozo: operativo, independiente de la ubicación
         geo.append(dict(
-            basin=basin, fm=str(rng.choice(s["formations"])),
-            depth=trunc_normal(rng, (lo + hi) / 2, (hi - lo) / 5, lo, hi),
-            pay=pay, phi=phi, perm=perm, sw=trunc_normal(rng, 38, 8, 20, 55), skin=skin,
+            basin=basin, fm=str(rng.choice(s["formations"])), lat=lat, lon=lon,
+            depth=depth, pay=pay, phi=phi, perm=perm, sw=sw, skin=skin,
             raw=phi ** 0.8 * perm ** 0.4 * pay ** 0.6 / (1 + skin * 0.1),
-        ))
-    # k calibrado: media geométrica del IP = sqrt(50*800) = 200 bbl/d (centra la log-normal en 50-800)
+        ))    # k calibrado: media geométrica del IP = sqrt(50*800) = 200 bbl/d (centra la log-normal en 50-800)
     raw = np.array([g["raw"] for g in geo])
     k_ip = float(np.sqrt(IP_MIN * IP_MAX) / np.exp(np.log(raw).mean()))
 
@@ -149,12 +198,11 @@ def generate(seed: int = SEED) -> tuple[pd.DataFrame, pd.DataFrame, int]:
         if abs(ip_final - ip) > 1e-9:
             n_ip_adjusted += 1
         cx = make_capex(rng, g["depth"], ip_final, stim, proppant, acid, *s["depth"])
-        lat0, lon0 = s["loc"]
         wid = f"VW-{i:03d}"
         wells.append({
             "well_id": wid, "well_name": f"{s['code']}-{''.join(w[0] for w in g['fm'].split())}-{i:03d}",
             "basin": g["basin"], "formation": g["fm"],
-            "latitude": round(lat0 + rng.normal(0, 0.3), 5), "longitude": round(lon0 + rng.normal(0, 0.3), 5),
+            "latitude": round(g["lat"], 5), "longitude": round(g["lon"], 5),
             "depth_m": round(g["depth"], 1), "net_pay_m": round(g["pay"], 1),
             "porosity_pct": round(g["phi"], 2), "permeability_md": round(g["perm"], 4),
             "water_saturation_pct": round(g["sw"], 1), "skin_factor": round(g["skin"], 2),

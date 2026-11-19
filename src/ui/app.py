@@ -1,4 +1,4 @@
-﻿"""WellProfitAI - frontend Streamlit (pozos verticales). Ejecutar:  streamlit run src/ui/app.py"""
+"""WellProfitAI - frontend Streamlit (pozos verticales). Ejecutar:  streamlit run src/ui/app.py"""
 import sys
 import time
 from pathlib import Path
@@ -35,7 +35,8 @@ AGENTS = [
     ("forecasting", "3 · Pronóstico", "Predice cuánto petróleo va a producir"),
     ("economic", "4 · Económico", "Calcula la ganancia y la decisión final"),
 ]
-AGENT_NAME_ES = {"geological": "Geológico", "forecasting": "Pronóstico", "economic": "Económico"}
+AGENT_NAME_ES = {"location": "Recomendación de ubicación", "geological": "Geológico", "forecasting": "Pronóstico",
+                 "economic": "Económico"}
 
 st.markdown("""
 <style>
@@ -62,6 +63,34 @@ st.markdown("<p class='subtitle'>¿Deberíamos perforar este pozo? Predicción d
             unsafe_allow_html=True)
 st.markdown("<p class='small'>Impulsado por 4 Agentes de IA | Análisis de Pozo Vertical</p>", unsafe_allow_html=True)
 
+# ------------------------------------------------------------------ recomendación de ubicación (con respaldo)
+BASIN_CENTER = {"Permian": (32.6, -102.4), "Eagle Ford": (28.9, -98.5), "Delaware": (31.6, -104.0),
+                "Midland": (31.5, -102.0)}
+DEFAULT_GEOLOGY = {"depth_m": 2800.0, "net_pay_m": 25.0, "porosity_pct": 8.0, "permeability_md": 0.5,
+                   "water_saturation_pct": 30.0, "skin_factor": 2.0}
+
+
+def mock_recommendation(basin, error=None):
+    lat, lon = BASIN_CENTER[basin]
+    return {"mock": True, "error": error, "n_candidates_evaluated": 0, "seconds": 0.0, "alternatives": [],
+            "best": {"latitude": lat, "longitude": lon, "npv10_usd_mm": None, "irr_pct": None, "decision": None,
+                     "reservoir_score": None, "estimated_geology": dict(DEFAULT_GEOLOGY),
+                     "confidence": {"level": "baja", "mean_km_3_nearest": None, "nearest_km": None,
+                                    "wells_within_15km": 0}}}
+
+
+@st.cache_data(show_spinner=False)
+def get_recommendation(basin, formation, stim, wti, acid, proppant):
+    if not AGENTS_OK:
+        raise ImportError(IMPORT_ERR)
+    return GeologicalAgent().recommend_location(basin, formation, stim, wti, acid, proppant)
+
+
+@st.cache_data(show_spinner=False)
+def load_history():
+    return pd.read_csv(Path(__file__).resolve().parents[2] / "src" / "data" / "wells.csv")
+
+
 # ------------------------------------------------------------------ sidebar
 with st.sidebar:
     st.title("📋 Nuevo Pozo Propuesto")
@@ -69,16 +98,6 @@ with st.sidebar:
                          help="Zona geográfica donde se perforaría el pozo")
     formation = st.selectbox("Formación", ["Wolfcamp", "Bone Spring", "Eagle Ford Shale", "Spraberry", "3rd Bone Spring"],
                              index=0, help="La capa de roca específica donde está el petróleo")
-    depth = st.slider("Profundidad (m)", 1000, 4500, 2800, 100, help="A cuántos metros de profundidad hay que perforar")
-    net_pay = st.slider("Espesor Neto (m)", 5, 50, 25, 1,
-                        help="Espesor de la capa de roca que contiene petróleo. Más gruesa = más petróleo")
-    porosity = st.slider("Porosidad (%)", 3.0, 15.0, 8.0, 0.1,
-                         help="Cuánto petróleo puede almacenar la roca, como una esponja. Más alto = más petróleo")
-    perm = st.slider("Permeabilidad (mD)", 0.001, 10.0, 0.5, 0.001, format="%.3f",
-                     help="Qué tan fácil fluye el petróleo a través de la roca. Más alto = fluye mejor")
-    skin = st.slider("Factor de Daño (Skin)", -2, 20, 2, 1,
-                     help="Qué tan tapada está la zona del pozo. Más bajo es mejor. "
-                          "Negativo significa que fue tratado para fluir mejor")
     stim_label = st.selectbox("Estimulación", ["Ninguna", "Acidificación", "Fractura Menor"], index=1,
                               help="Tratamiento para ayudar a que el petróleo fluya")
     stim = {"Ninguna": "none", "Acidificación": "acidizing", "Fractura Menor": "small_frac"}[stim_label]
@@ -92,18 +111,46 @@ with st.sidebar:
     wti = st.slider("Precio WTI (USD/barril)", 20, 120, 65, 1,
                     help="Precio actual del petróleo en USD por barril (WTI = referencia internacional)")
     st.divider()
+    st.markdown("📍 **El sistema propone la ubicación y la geología** según el histórico de pozos perforados.")
+    manual = st.checkbox("✏️ Ajustar la geología manualmente", value=False,
+                         help="Por defecto se usa la geología estimada en la ubicación recomendada. "
+                              "Activá esto para cambiar los valores a mano.")
+    manual_geo = None
+    if manual:
+        try:
+            _prev = get_recommendation(basin, formation, stim, float(wti), acid if stim == "acidizing" else None,
+                                       proppant if stim == "small_frac" else None)
+        except Exception as exc:  # noqa: BLE001
+            _prev = mock_recommendation(basin, f"{type(exc).__name__}: {exc}")
+        _g = _prev["best"]["estimated_geology"]
+        _k = f"{basin}|{formation}|{stim}|{wti}|{acid}|{proppant}"
+        depth = st.slider("Profundidad (m)", 1000, 4500, int(min(4500, max(1000, round(_g["depth_m"], -2)))), 100,
+                          key=f"depth_{_k}", help="A cuántos metros de profundidad hay que perforar")
+        net_pay = st.slider("Espesor Neto (m)", 5, 50, int(min(50, max(5, round(_g["net_pay_m"])))), 1, key=f"pay_{_k}",
+                            help="Espesor de la capa de roca que contiene petróleo. Más gruesa = más petróleo")
+        porosity = st.slider("Porosidad (%)", 3.0, 15.0, float(min(15.0, max(3.0, round(_g["porosity_pct"], 1)))), 0.1,
+                             key=f"phi_{_k}",
+                             help="Cuánto petróleo puede almacenar la roca, como una esponja. Más alto = más petróleo")
+        perm = st.slider("Permeabilidad (mD)", 0.001, 10.0, float(min(10.0, max(0.001, round(_g["permeability_md"], 3)))),
+                         0.001, format="%.3f", key=f"k_{_k}",
+                         help="Qué tan fácil fluye el petróleo a través de la roca. Más alto = fluye mejor")
+        skin = st.slider("Factor de Daño (Skin)", -2, 20, int(min(20, max(-2, round(_g["skin_factor"])))), 1,
+                         key=f"skin_{_k}",
+                         help="Qué tan tapada está la zona del pozo. Más bajo es mejor. "
+                              "Negativo significa que fue tratado para fluir mejor")
+        manual_geo = {"depth_m": depth, "net_pay_m": net_pay, "porosity_pct": porosity,
+                      "permeability_md": perm, "skin_factor": skin,
+                      "water_saturation_pct": float(_g["water_saturation_pct"])}
+    st.divider()
     simulate_fail = st.multiselect("Simular falla de un agente (demo del respaldo)",
-                                   ["geological", "forecasting", "economic"],
+                                   ["location", "geological", "forecasting", "economic"],
                                    format_func=AGENT_NAME_ES.get,
                                    help="Muestra que la app sigue funcionando con datos de respaldo si un agente falla")
     run_btn = st.button("🔍 Evaluar Pozo", type="primary", width="stretch")
     st.caption("🟢 Agentes reales conectados" if AGENTS_OK else f"🟠 Modo demo: datos de respaldo ({IMPORT_ERR})")
 
-raw_input = {"basin": basin, "formation": formation, "depth_m": depth, "net_pay_m": net_pay,
-             "porosity_pct": porosity, "permeability_md": perm, "water_saturation_pct": 30,
-             "skin_factor": skin, "stimulation_type": stim, "proppant_tonnes": proppant,
-             "acid_volume_m3": acid, "wti_price_usd": wti}
-
+request_input = {"basin": basin, "formation": formation, "stimulation_type": stim, "proppant_tonnes": proppant,
+                 "acid_volume_m3": acid, "wti_price_usd": wti}
 if not run_btn and "result" not in st.session_state:
     st.info("👈 Configurá los parámetros del pozo y hacé clic en Evaluar")
     st.stop()
@@ -187,9 +234,32 @@ def recomendacion(eco, fc, w):
 
 
 # ------------------------------------------------------------------ pipeline
-def run_pipeline(raw, on_status):
-    """Devuelve dict con outputs, estado por agente y errores de validación. Cada agente cae a mock si falla."""
+def run_pipeline(request, manual_geology, on_status):
+    """Devuelve dict con outputs, estado por agente y errores de validación. Cada agente cae a mock si falla.
+    Paso previo (parte del agente geológico): recomienda ubicación y geología a partir del histórico de pozos."""
     out, status = {}, {}
+
+    # ---- paso previo: recomendación de ubicación
+    on_status("location", "running", None)
+    t0 = time.perf_counter()
+    rec_err = None
+    try:
+        if "location" in simulate_fail:
+            raise RuntimeError("falla simulada")
+        if not AGENTS_OK:
+            raise ImportError(IMPORT_ERR)
+        rec = get_recommendation(request["basin"], request["formation"], request["stimulation_type"],
+                                 float(request["wti_price_usd"]),
+                                 request["acid_volume_m3"] if request["stimulation_type"] == "acidizing" else None,
+                                 request["proppant_tonnes"] if request["stimulation_type"] == "small_frac" else None)
+    except Exception as exc:  # noqa: BLE001
+        rec_err = f"{type(exc).__name__}: {exc}"
+        rec = mock_recommendation(request["basin"], rec_err)
+    status["location"] = {"mock": rec_err is not None, "error": rec_err, "seconds": round(time.perf_counter() - t0, 2)}
+    on_status("location", "mock" if rec_err else "done", status["location"])
+    best = rec["best"]
+    raw = {**request, **(manual_geology or best["estimated_geology"]),
+           "latitude": best["latitude"], "longitude": best["longitude"]}
 
     def step(key, real_fn, mock_fn):
         on_status(key, "running", None)
@@ -220,7 +290,8 @@ def run_pipeline(raw, on_status):
     geo = step("geological", lambda: GeologicalAgent().run(well), lambda: mock_geo(well))
     fc = step("forecasting", lambda: ForecastingAgent().run(geo, well), lambda: mock_forecast(geo, well))
     eco = step("economic", lambda: EconomicAgent().run(fc, well), lambda: mock_economic(fc, well))
-    return {"ok": True, "well": well, "geo": geo, "fc": fc, "eco": eco, "status": status,
+    return {"ok": True, "rec": rec, "manual": bool(manual_geology), "well": well, "geo": geo, "fc": fc, "eco": eco,
+            "status": status,
             "any_mock": any(s["mock"] for s in status.values())}
 
 
@@ -243,6 +314,7 @@ tab_geo, tab_fc, tab_eco, tab_pipe = st.tabs(
 
 with tab_pipe:
     st.subheader("4 agentes de IA trabajando uno tras otro")
+    loc_slot = st.empty()
     cols = st.columns(4)
     slots = [c.empty() for c in cols]
 
@@ -254,11 +326,17 @@ if run_btn or "result" not in st.session_state:
             slot.markdown(card_html(label, desc, *states[k]), unsafe_allow_html=True)
 
     def on_status(key, state, info):
+        if key == "location":
+            msg = {"running": "📍 Buscando la mejor ubicación en el histórico de pozos...",
+                   "done": f"📍 Ubicación recomendada en {info['seconds']} s" if info else "",
+                   "mock": "⚠️ Recomendación de ubicación con datos de respaldo"}[state]
+            loc_slot.markdown(msg)
+            return
         states[key] = (state, info)
         paint()
 
     paint()
-    res = run_pipeline(raw_input, on_status)
+    res = run_pipeline(request_input, manual_geo, on_status)
     st.session_state["result"], st.session_state["states"] = res, states
 else:
     res, states = st.session_state["result"], st.session_state["states"]
@@ -270,12 +348,12 @@ if not res["ok"]:
         st.error("### Corregí los datos del pozo\n\n" + res["error"])
     st.stop()
 
-well, geo, fc, eco = res["well"], res["geo"], res["fc"], res["eco"]
+well, geo, fc, eco, rec = res["well"], res["geo"], res["fc"], res["eco"], res["rec"]
 dec = eco["decision"]
 
 with verdict_box:
     st.markdown(f"<div class='verdict' style='background:{COLORS[dec]}'>"
-                f"<div class='v'>{VERDICT_TEXT[dec]}</div><div class='t'>Decisión del sistema: {dec}</div></div>",
+                f"<div class='v'>{VERDICT_TEXT[dec]}</div><div class='t'>Decisión del sistema: {dec} · 📍 {rec['best']['latitude']:.4f}, {rec['best']['longitude']:.4f}</div></div>",
                 unsafe_allow_html=True)
     if res["any_mock"]:
         st.warning("⚠️ Uno o más agentes fallaron, así que se muestran datos de respaldo (mock) para ellos. "
@@ -283,6 +361,75 @@ with verdict_box:
 
 # ------------------------------------------------------------------ tab 1: geología
 with tab_geo:
+    best = rec["best"]
+    st.markdown("### 📍 Dónde conviene perforar (según el histórico de pozos)")
+    if rec.get("mock"):
+        st.warning("No se pudo calcular la recomendación; se muestra el centro de la cuenca y una geología de respaldo.")
+    conf = best["confidence"]
+    c_icon = {"alta": "🟢", "media": "🟡", "baja": "🔴"}[conf["level"]]
+    l1, l2, l3, l4 = st.columns(4)
+    l1.markdown(kpi("Latitud", f"{best['latitude']:.4f}°", "ubicación recomendada"), unsafe_allow_html=True)
+    l2.markdown(kpi("Longitud", f"{best['longitude']:.4f}°", "ubicación recomendada"), unsafe_allow_html=True)
+    l3.markdown(kpi("Confianza", f"{c_icon} {conf['level'].upper()}",
+                    "" if conf["mean_km_3_nearest"] is None
+                    else f"pozos de referencia a {conf['mean_km_3_nearest']} km en promedio"), unsafe_allow_html=True)
+    l4.markdown(kpi("Puntos evaluados", f"{rec['n_candidates_evaluated']}", f"en {rec['seconds']} s"),
+                unsafe_allow_html=True)
+    if res["manual"]:
+        st.info("Modificaste la geología a mano: se usan tus valores, y la ubicación mostrada es la que el histórico "
+                "recomienda para la geología estimada.")
+
+    hist = None
+    try:
+        hist = load_history()
+    except Exception:  # noqa: BLE001
+        st.caption("No se pudo cargar el histórico de pozos para dibujar el mapa.")
+    if hist is not None:
+        hb = hist[hist.basin == well["basin"]]
+        analog_ids = {a["well_id"] for a in geo["analog_wells"]}
+        ha = hb[hb.well_id.isin(analog_ids)]
+        fm_ = go.Figure()
+        fm_.add_trace(go.Scattermap(lat=hb.latitude, lon=hb.longitude, mode="markers", name="Pozos históricos",
+                                    marker=dict(size=11, color=hb.eur_mmboe, colorscale="YlOrRd", cmin=0, cmax=0.8,
+                                                colorbar=dict(title="EUR<br>(MMBOE)", thickness=14)),
+                                    text=hb.well_name + "<br>EUR " + hb.eur_mmboe.round(2).astype(str) + " MMBOE",
+                                    hoverinfo="text"))
+        if len(ha):
+            fm_.add_trace(go.Scattermap(lat=ha.latitude, lon=ha.longitude, mode="markers", name="Los 5 más parecidos",
+                                        marker=dict(size=19, color="rgba(37,99,235,0.45)"), hoverinfo="skip"))
+        if rec["alternatives"]:
+            fm_.add_trace(go.Scattermap(lat=[a["latitude"] for a in rec["alternatives"]],
+                                        lon=[a["longitude"] for a in rec["alternatives"]], mode="markers+text",
+                                        name="Alternativas", text=["Alt. 1", "Alt. 2"][:len(rec["alternatives"])],
+                                        textposition="top right", marker=dict(size=17, color="#2563eb")))
+        fm_.add_trace(go.Scattermap(lat=[best["latitude"]], lon=[best["longitude"]], mode="markers+text",
+                                    name="Pozo nuevo (recomendado)", text=["⭐ POZO NUEVO"], textposition="top right",
+                                    textfont=dict(size=16, color="#991b1b"), marker=dict(size=24, color="#dc2626")))
+        fm_.update_layout(map=dict(style="open-street-map", center=dict(lat=best["latitude"], lon=best["longitude"]),
+                                   zoom=7.2), height=470, margin=dict(l=0, r=0, t=0, b=0),
+                          legend=dict(orientation="h", y=1.02, x=0))
+        st.plotly_chart(fm_, width="stretch")
+        st.caption("Referencia visual: cada punto es un pozo ya perforado, más oscuro = más petróleo (EUR). "
+                   "La estrella roja es el pozo nuevo.")
+
+    eg = best["estimated_geology"]
+    g1, g2 = st.columns([1.2, 1])
+    with g1:
+        st.markdown("**Geología que se usa para el análisis**" + (" (ajustada a mano)" if res["manual"] else " (estimada del histórico)"))
+        used = {"Profundidad (m)": well["depth_m"], "Espesor neto (m)": well["net_pay_m"],
+                "Porosidad (%)": well["porosity_pct"], "Permeabilidad (mD)": well["permeability_md"],
+                "Daño / Skin": well["skin_factor"], "Saturación de agua (%)": well["water_saturation_pct"]}
+        st.dataframe(pd.DataFrame({"Propiedad": list(used), "Valor": [round(float(v), 3) for v in used.values()]}),
+                     hide_index=True, width="stretch")
+    with g2:
+        if rec["alternatives"] or best.get("npv10_usd_mm") is not None:
+            st.markdown("**Mejores ubicaciones evaluadas**")
+            cand = [("Recomendada", best)] + [(f"Alternativa {i}", a) for i, a in enumerate(rec["alternatives"], 1)]
+            st.dataframe(pd.DataFrame([{"Opción": n_, "Latitud": c["latitude"], "Longitud": c["longitude"],
+                                        "VAN10 (USD MM)": c["npv10_usd_mm"], "Decisión": c["decision"]}
+                                       for n_, c in cand]), hide_index=True, width="stretch")
+    st.divider()
+
     score, risk = geo["reservoir_score"], geo["risk_level"]
     rcolor = {"low": "#16a34a", "medium": "#f59e0b", "high": "#dc2626"}[risk]
     c1, c2 = st.columns([1, 1.6])
@@ -414,7 +561,9 @@ with tab_eco:
 
 # ------------------------------------------------------------------ tab 4: detalle del pipeline
 with tab_pipe:
-    rows = [{"Agente": lbl, "Estado": "Datos de respaldo" if res["status"][k]["mock"] else "OK",
+    rows = [{"Agente": "2a · Geológico: ubicación", "Estado": "Datos de respaldo" if res["status"]["location"]["mock"] else "OK",
+             "Segundos": res["status"]["location"]["seconds"], "Error": res["status"]["location"]["error"] or ""}]
+    rows += [{"Agente": lbl, "Estado": "Datos de respaldo" if res["status"][k]["mock"] else "OK",
              "Segundos": res["status"][k]["seconds"], "Error": res["status"][k]["error"] or ""}
             for k, lbl, _ in AGENTS]
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")

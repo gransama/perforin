@@ -10,7 +10,7 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FEATURES = ["depth_m", "net_pay_m", "porosity_pct", "permeability_md", "skin_factor"]
 RETURN_FIELDS = ["well_id", "well_name", "basin", "formation", *FEATURES,
-                 "ip_bbl_d", "eur_mmboe", "capex_total_usd_mm"]
+                 "ip_bbl_d", "eur_mmboe", "capex_total_usd_mm", "latitude", "longitude"]
 
 
 @lru_cache(maxsize=4)

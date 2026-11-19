@@ -52,7 +52,8 @@ def test_analogs():
     a = find_analogs(NEW)
     assert len(a) == 5
     assert set(a[0]) == {"well_id", "well_name", "basin", "formation", "depth_m", "net_pay_m", "porosity_pct",
-                         "permeability_md", "skin_factor", "ip_bbl_d", "eur_mmboe", "capex_total_usd_mm", "distance"}
+                         "permeability_md", "skin_factor", "ip_bbl_d", "eur_mmboe", "capex_total_usd_mm", "latitude",
+                         "longitude", "distance"}
     assert [x["distance"] for x in a] == sorted(x["distance"] for x in a)
     exact = W.iloc[0][["depth_m", "net_pay_m", "porosity_pct", "permeability_md", "skin_factor"]].to_dict()
     assert find_analogs(exact, n=1)[0]["well_id"] == W.iloc[0].well_id

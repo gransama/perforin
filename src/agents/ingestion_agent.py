@@ -19,13 +19,15 @@ NUMERIC_RANGES = {  # campo -> (min, max)
     "proppant_tonnes": (0, 500),
     "acid_volume_m3": (0, 50),
     "wti_price_usd": (20, 200),
+    "latitude": (25.5, 37.0),      # Texas / Nuevo México
+    "longitude": (-107.0, -93.0),
 }
-DEFAULTS = {"water_saturation_pct": 30, "proppant_tonnes": 0, "acid_volume_m3": 0}
+DEFAULTS = {"water_saturation_pct": 30, "proppant_tonnes": 0, "acid_volume_m3": 0, "latitude": None, "longitude": None}
 REQUIRED = ["basin", "formation", "depth_m", "net_pay_m", "porosity_pct", "permeability_md",
             "skin_factor", "stimulation_type", "wti_price_usd"]
 FIELD_ORDER = ["well_id", "basin", "formation", "depth_m", "net_pay_m", "porosity_pct", "permeability_md",
                "water_saturation_pct", "skin_factor", "stimulation_type", "proppant_tonnes",
-               "acid_volume_m3", "wti_price_usd"]
+               "acid_volume_m3", "wti_price_usd", "latitude", "longitude"]
 
 
 def _is_missing(v) -> bool:
@@ -78,6 +80,9 @@ class IngestionAgent:
                 errors.append(f"{field}={n:g} fuera de rango; rango válido: {lo} a {hi}")
             else:
                 clean[field] = n
+
+        if (clean.get("latitude") is None) != (clean.get("longitude") is None) and not errors:
+            errors.append("latitude y longitude deben venir juntas (o ninguna de las dos)")
 
         if errors:
             raise ValueError("Valores inválidos:\n- " + "\n- ".join(errors))
