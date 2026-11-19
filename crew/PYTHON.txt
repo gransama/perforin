@@ -1,0 +1,1 @@
+C:\Users\gcarrillo\.aws\perforin\.venv\Scripts\python.exe
