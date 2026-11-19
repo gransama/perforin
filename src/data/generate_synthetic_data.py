@@ -1,0 +1,204 @@
+﻿"""Genera 200 pozos verticales sintéticos + perfiles de producción Arps (30 años). Costos en USD.
+
+Sin pozos horizontales, sin longitud lateral, sin fracturamiento multi-etapa.
+Uso (desde la raíz del proyecto):  python src/data/generate_synthetic_data.py
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+
+SEED = 42
+N_WELLS = 200
+MONTHS = 360
+DAYS_PER_MONTH = 30.4375
+D_MIN_MONTHLY = 0.10 / 12.0      # 10%/año = 0.83%/mes: punto de cambio a exponencial
+Q_ECON_LIMIT = 5.0               # bbl/d: por debajo se detiene la producción
+IP_MIN, IP_MAX = 50.0, 800.0
+EUR_MIN, EUR_MAX = 0.05, 0.8
+CAPEX_MIN, CAPEX_MAX = 1.5, 7.0
+OUT_DIR = Path(__file__).resolve().parent
+
+BASINS = {
+    "Permian":    dict(n=80, formations=["Wolfcamp", "Bone Spring"], depth=(1500, 3500),
+                       phi=8.0, k=0.5, di=(0.04, 0.10), b=(0.3, 1.0), loc=(32.2, -102.3), code="PRM"),
+    "Eagle Ford": dict(n=50, formations=["Eagle Ford Shale"], depth=(1200, 3200),
+                       phi=7.0, k=0.1, di=(0.05, 0.12), b=(0.4, 1.1), loc=(28.9, -98.3), code="EGF"),
+    "Delaware":   dict(n=40, formations=["Wolfcamp", "3rd Bone Spring"], depth=(1800, 4200),
+                       phi=6.0, k=0.05, di=(0.05, 0.11), b=(0.5, 1.2), loc=(31.6, -103.9), code="DEL"),
+    "Midland":    dict(n=30, formations=["Wolfcamp", "Spraberry"], depth=(1200, 3000),
+                       phi=7.5, k=0.3, di=(0.04, 0.10), b=(0.3, 0.9), loc=(31.9, -102.0), code="MID"),
+}
+
+
+def trunc_normal(rng, mean, sd, lo, hi) -> float:
+    a, b = (lo - mean) / sd, (hi - mean) / sd
+    return float(stats.truncnorm.rvs(a, b, loc=mean, scale=sd, random_state=rng))
+
+
+def trunc_lognormal(rng, mean, sigma, lo, hi) -> float:
+    """Log-normal con la media dada, truncada a [lo, hi] por rechazo (sin acumulación en los bordes)."""
+    mu = np.log(mean) - sigma ** 2 / 2
+    for _ in range(1000):
+        v = float(stats.lognorm.rvs(s=sigma, scale=np.exp(mu), random_state=rng))
+        if lo <= v <= hi:
+            return v
+    return float(np.clip(v, lo, hi))
+
+
+def arps_rates(qi: float, di: float, b: float, months: int = MONTHS) -> np.ndarray:
+    """Tasa diaria (bbl/d) por mes (mes 1 -> t=0).
+    Hiperbólica q=qi/(1+b*Di*t)^(1/b) hasta que D(t)=Di/(1+b*Di*t)=0.83%/mes;
+    luego q=q_sw*exp(-D_sw*(t-t_sw)). Producción = 0 una vez que q < 5 bbl/d."""
+    t = np.arange(months, dtype=float)
+    t_sw = (di / D_MIN_MONTHLY - 1.0) / (b * di)
+    q_hyp = qi / (1.0 + b * di * t) ** (1.0 / b)
+    q_sw = qi / (1.0 + b * di * t_sw) ** (1.0 / b)
+    q = np.where(t <= t_sw, q_hyp, q_sw * np.exp(-D_MIN_MONTHLY * (t - t_sw)))
+    below = np.where(q < Q_ECON_LIMIT)[0]
+    if len(below):
+        q[below[0]:] = 0.0
+    return q
+
+
+def eur_mmboe(rates: np.ndarray) -> float:
+    return float((rates * DAYS_PER_MONTH).sum() / 1e6)
+
+
+def sample_decline(rng, ip: float, spec: dict) -> tuple[float, float, np.ndarray, float, float]:
+    """Muestrea Di y b dentro de los rangos de la cuenca hasta que EUR esté en 0.05-0.8 MMBOE.
+    Si ninguna combinación lo logra, reescala IP (queda registrado). Devuelve (di, b, rates, eur, ip_final)."""
+    for _ in range(300):
+        di, b = float(rng.uniform(*spec["di"])), float(rng.uniform(*spec["b"]))
+        r = arps_rates(ip, di, b)
+        if EUR_MIN <= eur_mmboe(r) <= EUR_MAX:
+            return di, b, r, eur_mmboe(r), ip
+    di, b = float(np.mean(spec["di"])), float(np.mean(spec["b"]))
+    lo, hi = 1.0, 2000.0  # bisección sobre IP (EUR crece monótonamente con IP)
+    target = EUR_MIN * 1.05 if eur_mmboe(arps_rates(ip, di, b)) < EUR_MIN else EUR_MAX * 0.95
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        if eur_mmboe(arps_rates(mid, di, b)) < target:
+            lo = mid
+        else:
+            hi = mid
+    ip2 = (lo + hi) / 2
+    r = arps_rates(ip2, di, b)
+    return di, b, r, eur_mmboe(r), ip2
+
+
+def make_capex(rng, depth, ip, stim, proppant, acid, dmin, dmax) -> dict:
+    pre = trunc_normal(rng, 0.30, 0.08, 0.1, 0.5)
+    drilling = float(np.clip(0.8 + 2.2 * (depth - dmin) / (dmax - dmin) + rng.normal(0, 0.12), 0.8, 3.0))
+    if stim == "none":
+        comp = rng.uniform(0.2, 0.35)
+    elif stim == "acidizing":
+        comp = 0.35 + 0.008 * acid + rng.normal(0, 0.04)          # 0.4 - 0.75
+    else:
+        comp = 0.8 + 0.0013 * proppant + rng.normal(0, 0.06)      # 0.87 - 1.45
+    comp = float(np.clip(comp, 0.2, 1.5))
+    fac = float(np.clip(0.2 + 0.8 * (ip - IP_MIN) / (IP_MAX - IP_MIN) + rng.normal(0, 0.06), 0.2, 1.0))
+    lift = float(np.clip(0.1 + 0.4 * (depth - dmin) / (dmax - dmin) + rng.normal(0, 0.04), 0.1, 0.5))
+    cont = float(np.clip(0.07 * (pre + drilling + comp + fac + lift), 0.1, 0.5))
+    parts = {"predrill": pre, "drilling": drilling, "completion": comp, "facilities": fac,
+             "lift": lift, "contingency": cont}
+    parts = {k: round(v, 3) for k, v in parts.items()}
+    parts["total"] = round(sum(parts.values()), 3)
+    return parts
+
+
+def generate(seed: int = SEED) -> tuple[pd.DataFrame, pd.DataFrame, int]:
+    rng = np.random.default_rng(seed)
+
+    # Estimulación exacta 30/40/30 (60/80/60), repartida al azar
+    stims = np.array(["none"] * 60 + ["acidizing"] * 80 + ["small_frac"] * 60)
+    rng.shuffle(stims)
+    plan = [b for b, s in BASINS.items() for _ in range(s["n"])]
+    rng.shuffle(plan)
+
+    # Pasada 1: geología -> IP bruto sin k
+    geo = []
+    for basin in plan:
+        s = BASINS[basin]
+        lo, hi = s["depth"]
+        phi = trunc_lognormal(rng, s["phi"], 0.30, 3.0, 15.0)
+        perm = trunc_lognormal(rng, s["k"], 1.00, 0.001, 10.0)
+        pay = trunc_normal(rng, 20, 10, 5, 50)
+        skin = trunc_normal(rng, 5, 5, -2, 20)
+        geo.append(dict(
+            basin=basin, fm=str(rng.choice(s["formations"])),
+            depth=trunc_normal(rng, (lo + hi) / 2, (hi - lo) / 5, lo, hi),
+            pay=pay, phi=phi, perm=perm, sw=trunc_normal(rng, 38, 8, 20, 55), skin=skin,
+            raw=phi ** 0.8 * perm ** 0.4 * pay ** 0.6 / (1 + skin * 0.1),
+        ))
+    # k calibrado: media geométrica del IP = sqrt(50*800) = 200 bbl/d (centra la log-normal en 50-800)
+    raw = np.array([g["raw"] for g in geo])
+    k_ip = float(np.sqrt(IP_MIN * IP_MAX) / np.exp(np.log(raw).mean()))
+
+    wells, profiles, n_ip_adjusted = [], [], 0
+    for i, (g, stim) in enumerate(zip(geo, stims), start=1):
+        s = BASINS[g["basin"]]
+        proppant = float(rng.uniform(50, 500)) if stim == "small_frac" else 0.0
+        acid = float(rng.uniform(5, 50)) if stim == "acidizing" else 0.0
+
+        ip = float(np.clip(k_ip * g["raw"] + rng.normal(0, 10), IP_MIN, IP_MAX))
+        di, b, rates, eur, ip_final = sample_decline(rng, ip, s)
+        if abs(ip_final - ip) > 1e-9:
+            n_ip_adjusted += 1
+        cx = make_capex(rng, g["depth"], ip_final, stim, proppant, acid, *s["depth"])
+        lat0, lon0 = s["loc"]
+        wid = f"VW-{i:03d}"
+        wells.append({
+            "well_id": wid, "well_name": f"{s['code']}-{''.join(w[0] for w in g['fm'].split())}-{i:03d}",
+            "basin": g["basin"], "formation": g["fm"],
+            "latitude": round(lat0 + rng.normal(0, 0.3), 5), "longitude": round(lon0 + rng.normal(0, 0.3), 5),
+            "depth_m": round(g["depth"], 1), "net_pay_m": round(g["pay"], 1),
+            "porosity_pct": round(g["phi"], 2), "permeability_md": round(g["perm"], 4),
+            "water_saturation_pct": round(g["sw"], 1), "skin_factor": round(g["skin"], 2),
+            "stimulation_type": stim, "proppant_tonnes": round(proppant, 1), "acid_volume_m3": round(acid, 1),
+            "ip_bbl_d": round(ip_final, 1), "qi": round(ip_final, 1), "di": round(di, 4), "b_factor": round(b, 3),
+            "capex_predrill_usd_mm": cx["predrill"], "capex_drilling_usd_mm": cx["drilling"],
+            "capex_completion_usd_mm": cx["completion"], "capex_facilities_usd_mm": cx["facilities"],
+            "capex_lift_usd_mm": cx["lift"], "capex_contingency_usd_mm": cx["contingency"],
+            "capex_total_usd_mm": cx["total"], "eur_mmboe": round(eur, 4),
+        })
+        profiles.append(pd.DataFrame({
+            "well_id": wid, "month": np.arange(1, MONTHS + 1),
+            "production_bbl_d": rates.round(2), "cumulative_bbl": np.cumsum(rates * DAYS_PER_MONTH).round(0),
+        }))
+    print(f"k calibrado = {k_ip:.2f} | pozos con IP reescalado para cumplir EUR: {n_ip_adjusted}")
+    return pd.DataFrame(wells), pd.concat(profiles, ignore_index=True), n_ip_adjusted
+
+
+def main() -> None:
+    wells, prof, _ = generate()
+    wells.to_csv(OUT_DIR / "wells.csv", index=False)
+    prof.to_csv(OUT_DIR / "production_profiles.csv", index=False)
+
+    pd.set_option("display.width", 200)
+    print(f"\nwells.csv: {len(wells)} filas | production_profiles.csv: {len(prof)} filas")
+    print(wells["basin"].value_counts().to_string())
+    print(wells["stimulation_type"].value_counts().to_string())
+    agg = wells.groupby("basin").agg(
+        ip_min=("ip_bbl_d", "min"), ip_max=("ip_bbl_d", "max"), ip_mean=("ip_bbl_d", "mean"),
+        eur_min=("eur_mmboe", "min"), eur_max=("eur_mmboe", "max"), eur_mean=("eur_mmboe", "mean"),
+        capex_min=("capex_total_usd_mm", "min"), capex_max=("capex_total_usd_mm", "max"),
+        capex_mean=("capex_total_usd_mm", "mean")).round(3)
+    print("\nResumen por cuenca (IP bbl/d, EUR MMBOE, CAPEX USD MM):\n" + agg.to_string())
+    print("\nTotal: IP %.0f-%.0f (media %.0f) | EUR %.3f-%.3f (media %.3f) | CAPEX %.2f-%.2f (media %.2f)" % (
+        wells.ip_bbl_d.min(), wells.ip_bbl_d.max(), wells.ip_bbl_d.mean(),
+        wells.eur_mmboe.min(), wells.eur_mmboe.max(), wells.eur_mmboe.mean(),
+        wells.capex_total_usd_mm.min(), wells.capex_total_usd_mm.max(), wells.capex_total_usd_mm.mean()))
+    print("Pozos con IP en el borde (50 u 800):", int(((wells.ip_bbl_d <= 50) | (wells.ip_bbl_d >= 800)).sum()))
+
+    ok_eur = wells.eur_mmboe.between(EUR_MIN, EUR_MAX).all()
+    ok_capex = wells.capex_total_usd_mm.between(CAPEX_MIN, CAPEX_MAX).all()
+    print(f"EUR en 0.05-0.8 MMBOE: {'OK' if ok_eur else 'FALLA'} | CAPEX en USD 1.5-7.0 MM: {'OK' if ok_capex else 'FALLA'}")
+    assert ok_eur and ok_capex
+
+
+if __name__ == "__main__":
+    main()
