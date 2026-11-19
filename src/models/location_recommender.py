@@ -24,6 +24,9 @@ BOX_MARGIN_DEG = 0.05
 K_NEIGHBORS = 8
 ALT_MIN_SEPARATION_KM = 10.0
 DEFAULT_ACID_M3, DEFAULT_PROPPANT_T = 20.0, 150.0
+COST_KEYS = ("opex_loe_usd_bbl", "opex_gpt_usd_bbl", "opex_gna_usd_bbl", "royalty_pct", "prod_tax_pct",
+             "crude_discount_usd_bbl", "export_duty_pct")
+ZONE_NPV_FRACTION = 0.75    # la zona recomendada agrupa los puntos con VAN10 >= 75% del mejor (y decisión GO)
 CONFIDENCE_KM = (8.0, 20.0)  # distancia media a los 3 pozos más cercanos: alta <= 8, media <= 20, baja > 20
 
 
@@ -89,6 +92,27 @@ def _evaluate(request: dict, lat: float, lon: float, est: dict) -> dict:
     }
 
 
+def viable_zone(candidates: list, best: dict) -> dict:
+    """Zona donde conviene perforar: puntos evaluados con decisión GO y VAN10 >= ZONE_NPV_FRACTION x el mejor.
+    Devuelve los puntos y el contorno (envolvente convexa) como lista de [lat, lon] cerrada, o None si no hay
+    al menos 3 puntos no alineados."""
+    thr = ZONE_NPV_FRACTION * best["npv10_usd_mm"]
+    pts = [c for c in candidates if best["npv10_usd_mm"] > 0 and c["decision"] == "GO"
+           and c["npv10_usd_mm"] >= thr]
+    zone = {"threshold_npv10_usd_mm": round(max(thr, 0.0), 2), "n_points": len(pts),
+            "points": [[c["latitude"], c["longitude"], c["npv10_usd_mm"]] for c in pts], "polygon": None}
+    if len(pts) >= 3:
+        try:
+            from scipy.spatial import ConvexHull
+            xy = np.array([[c["latitude"], c["longitude"]] for c in pts])
+            hull = ConvexHull(xy)
+            ring = xy[hull.vertices].tolist()
+            zone["polygon"] = ring + [ring[0]]
+        except Exception:  # puntos alineados u otro caso degenerado: se muestran solo los puntos
+            zone["polygon"] = None
+    return zone
+
+
 def recommend(basin: str, formation: str, stimulation_type: str, wti_price_usd: float,
               acid_volume_m3: float | None = None, proppant_tonnes: float | None = None,
               n_alternatives: int = 2, opex: dict | None = None) -> dict:
@@ -109,7 +133,7 @@ def recommend(basin: str, formation: str, stimulation_type: str, wti_price_usd: 
         if stimulation_type == "small_frac" else 0.0,
     }
     request.update({k: float(v) for k, v in (opex or {}).items()
-                    if k in ("opex_loe_usd_bbl", "opex_gpt_usd_bbl", "opex_gna_usd_bbl") and v is not None})
+                    if k in COST_KEYS and v is not None})
 
     la0, la1 = bw.latitude.min() - BOX_MARGIN_DEG, bw.latitude.max() + BOX_MARGIN_DEG
     lo0, lo1 = bw.longitude.min() - BOX_MARGIN_DEG, bw.longitude.max() + BOX_MARGIN_DEG
@@ -137,6 +161,7 @@ def recommend(basin: str, formation: str, stimulation_type: str, wti_price_usd: 
     return {
         "request": request,
         "best": chosen[0],
+        "zone": viable_zone(candidates, chosen[0]),
         "alternatives": chosen[1:],
         "n_candidates_evaluated": len(candidates),
         "seconds": round(time.perf_counter() - t0, 2),

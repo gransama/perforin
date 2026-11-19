@@ -22,17 +22,23 @@ NUMERIC_RANGES = {  # campo -> (min, max)
     "opex_loe_usd_bbl": (0, 30),   # costos operativos opcionales (USD/bbl)
     "opex_gpt_usd_bbl": (0, 15),
     "opex_gna_usd_bbl": (0, 10),
+    "royalty_pct": (0, 30),                # regalías (% de la venta)
+    "prod_tax_pct": (0, 20),               # impuestos sobre la producción (% tras regalías)
+    "crude_discount_usd_bbl": (0, 20),     # descuento del crudo local sobre la referencia (USD/bbl)
+    "export_duty_pct": (0, 20),            # retención a la exportación (%)
     "latitude": (-55.5, -21.5),    # Argentina
     "longitude": (-74.0, -53.0),
 }
 DEFAULTS = {"water_saturation_pct": 30, "proppant_tonnes": 0, "acid_volume_m3": 0,
             "opex_loe_usd_bbl": 6.00, "opex_gpt_usd_bbl": 2.50, "opex_gna_usd_bbl": 1.50,
+            "royalty_pct": 25.0, "prod_tax_pct": 7.5, "crude_discount_usd_bbl": 0.0, "export_duty_pct": 0.0,
             "latitude": None, "longitude": None}
 REQUIRED = ["basin", "formation", "depth_m", "net_pay_m", "porosity_pct", "permeability_md",
             "skin_factor", "stimulation_type", "wti_price_usd"]
 FIELD_ORDER = ["well_id", "basin", "formation", "depth_m", "net_pay_m", "porosity_pct", "permeability_md",
                "water_saturation_pct", "skin_factor", "stimulation_type", "proppant_tonnes",
                "acid_volume_m3", "wti_price_usd", "opex_loe_usd_bbl", "opex_gpt_usd_bbl", "opex_gna_usd_bbl",
+               "royalty_pct", "prod_tax_pct", "crude_discount_usd_bbl", "export_duty_pct",
                "latitude", "longitude"]
 
 

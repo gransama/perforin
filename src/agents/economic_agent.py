@@ -14,6 +14,8 @@ MONTHLY_RATE = DISCOUNT_ANNUAL / 12.0
 GO_IRR_PCT, CONDITIONAL_IRR_PCT = 15.0, 10.0
 SENSITIVITY_PRICES = [40, 50, 60, 65, 70, 80, 90, 100]
 NET_FACTOR = (1 - ROYALTY) * (1 - PROD_TAX)   # ingreso neto por USD bruto
+# Parámetros fiscales/comerciales (fracciones). Editables por pozo vía well_data (ver fiscal_from).
+DEFAULT_FISCAL = {"royalty": ROYALTY, "tax": PROD_TAX, "discount": 0.0, "duty": 0.0}
 
 CAPEX_KEYS = ["capex_predrill_usd_mm", "capex_drilling_usd_mm", "capex_completion_usd_mm",
               "capex_facilities_usd_mm", "capex_lift_usd_mm", "capex_contingency_usd_mm"]
@@ -46,12 +48,28 @@ def estimate_capex(well: dict) -> dict:
     return out
 
 
-def cash_flows(rate_bbl_d: np.ndarray, price: float, capex_usd: float, opex_bbl: float = OPEX_PER_BOE) -> dict:
+def fiscal_from(well_data: dict) -> dict:
+    """Lee los parámetros fiscales opcionales de well_data (en % y USD/bbl) y devuelve fracciones."""
+    return {"royalty": float(well_data.get("royalty_pct", ROYALTY * 100)) / 100.0,
+            "tax": float(well_data.get("prod_tax_pct", PROD_TAX * 100)) / 100.0,
+            "discount": float(well_data.get("crude_discount_usd_bbl", 0.0)),
+            "duty": float(well_data.get("export_duty_pct", 0.0)) / 100.0}
+
+
+def realized_price(price: float, fiscal: dict | None = None) -> float:
+    """Precio realizado por barril: (referencia - descuento del crudo) x (1 - retención a la exportación)."""
+    f = {**DEFAULT_FISCAL, **(fiscal or {})}
+    return (price - f["discount"]) * (1.0 - f["duty"])
+
+
+def cash_flows(rate_bbl_d: np.ndarray, price: float, capex_usd: float, opex_bbl: float = OPEX_PER_BOE,
+               fiscal: dict | None = None) -> dict:
     """Flujo mensual (meses 1..N) y vector con capex en el mes 0."""
+    f = {**DEFAULT_FISCAL, **(fiscal or {})}
     bbl = rate_bbl_d * DAYS_PER_MONTH
-    gross = bbl * price
-    royalties = gross * ROYALTY
-    taxes = (gross - royalties) * PROD_TAX
+    gross = bbl * realized_price(price, f)
+    royalties = gross * f["royalty"]
+    taxes = (gross - royalties) * f["tax"]
     net_rev = gross - royalties - taxes
     opex = bbl * opex_bbl
     net_cf = net_rev - opex
@@ -87,15 +105,17 @@ def decide(npv_usd: float, irr: float | None) -> str:
     return "CONDITIONAL"   # NPV > 0 implica IRR > 10%; aquí 10% < IRR <= 15%
 
 
-def breakeven_price(rate_bbl_d: np.ndarray, capex_usd: float, opex_bbl: float = OPEX_PER_BOE) -> float:
+def breakeven_price(rate_bbl_d: np.ndarray, capex_usd: float, opex_bbl: float = OPEX_PER_BOE,
+                    fiscal: dict | None = None) -> float:
     """NPV es lineal en el precio, por lo que el breakeven (NPV10 = 0) se resuelve exacto con 2 evaluaciones."""
-    n0 = npv(cash_flows(rate_bbl_d, 0.0, capex_usd, opex_bbl)["cf0"])
-    n1 = npv(cash_flows(rate_bbl_d, 100.0, capex_usd, opex_bbl)["cf0"])
+    n0 = npv(cash_flows(rate_bbl_d, 0.0, capex_usd, opex_bbl, fiscal)["cf0"])
+    n1 = npv(cash_flows(rate_bbl_d, 100.0, capex_usd, opex_bbl, fiscal)["cf0"])
     return float(-n0 / ((n1 - n0) / 100.0))
 
 
-def _evaluate(rate: np.ndarray, price: float, capex_usd: float, opex_bbl: float = OPEX_PER_BOE) -> dict:
-    cf = cash_flows(rate, price, capex_usd, opex_bbl)
+def _evaluate(rate: np.ndarray, price: float, capex_usd: float, opex_bbl: float = OPEX_PER_BOE,
+              fiscal: dict | None = None) -> dict:
+    cf = cash_flows(rate, price, capex_usd, opex_bbl, fiscal)
     n, i = npv(cf["cf0"]), irr_pct(cf["cf0"])
     return {"cf": cf, "npv_usd": n, "irr": i, "payback": payback_months(cf["cf0"]), "decision": decide(n, i)}
 
@@ -131,15 +151,16 @@ def run(forecast_output: dict, well_data: dict) -> dict:
     gpt = float(well_data.get("opex_gpt_usd_bbl", 2.50))
     gna = float(well_data.get("opex_gna_usd_bbl", 1.50))
     opex_bbl_in = loe + gpt + gna
+    fiscal = fiscal_from(well_data)
 
     rate = np.asarray(forecast_output["production_p50_bbl_d"], dtype=float)
-    base = _evaluate(rate, price, capex_usd, opex_bbl_in)
+    base = _evaluate(rate, price, capex_usd, opex_bbl_in, fiscal)
     cf = base["cf"]
-    be = breakeven_price(rate, capex_usd, opex_bbl_in)
+    be = breakeven_price(rate, capex_usd, opex_bbl_in, fiscal)
 
     sensitivity = []
     for p in SENSITIVITY_PRICES:
-        e = _evaluate(rate, p, capex_usd, opex_bbl_in)
+        e = _evaluate(rate, p, capex_usd, opex_bbl_in, fiscal)
         sensitivity.append({"wti_usd_bbl": p, "npv10_usd_mm": round(e["npv_usd"] / 1e6, 2),
                             "irr_pct": None if e["irr"] is None else round(e["irr"], 1),
                             "payback_months": e["payback"], "decision": e["decision"]})
@@ -148,7 +169,7 @@ def run(forecast_output: dict, well_data: dict) -> dict:
     for name in ("p10", "p50", "p90"):
         key = f"production_{name}_bbl_d"
         if key in forecast_output:
-            e = _evaluate(np.asarray(forecast_output[key], dtype=float), price, capex_usd, opex_bbl_in)
+            e = _evaluate(np.asarray(forecast_output[key], dtype=float), price, capex_usd, opex_bbl_in, fiscal)
             scenarios[name] = {"eur_mmboe": forecast_output.get(f"eur_{name}_mmboe"),
                                "npv10_usd_mm": round(e["npv_usd"] / 1e6, 2),
                                "irr_pct": None if e["irr"] is None else round(e["irr"], 1),
@@ -168,9 +189,10 @@ def run(forecast_output: dict, well_data: dict) -> dict:
         "royalties_taxes_per_bbl": round(roy_tax_bbl, 2),     # lo que se lleva el dueño del terreno y el estado
         "cost_per_bbl": round(opex_bbl, 2),                   # costo de operar un barril (sin inversión)
         "opex_breakdown_per_bbl": {"LOE": round(loe, 2), "GPT": round(gpt, 2), "G&A": round(gna, 2)},
-        "operating_margin_per_bbl": round(price - opex_bbl - roy_tax_bbl, 2),  # antes de recuperar el CAPEX
-        "price_per_bbl": price,
-        "margin_per_bbl": round(price - capex_bbl - opex_bbl - roy_tax_bbl, 2),
+        "operating_margin_per_bbl": round(realized_price(price, fiscal) - opex_bbl - roy_tax_bbl, 2),  # antes de recuperar el CAPEX
+        "price_per_bbl": round(realized_price(price, fiscal), 2),   # precio realizado
+        "reference_price_per_bbl": price,
+        "margin_per_bbl": round(realized_price(price, fiscal) - capex_bbl - opex_bbl - roy_tax_bbl, 2),
     }
     return {
         "well_id": well_data.get("well_id", forecast_output.get("well_id")),

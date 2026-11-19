@@ -30,10 +30,20 @@ El dataset (`src/data/*.csv`) y el modelo (`src/models/wellprofit_model.pkl`) ya
 
 Si el .pkl no carga (otra version de xgboost/scikit-learn), correr `train_model.py` de nuevo. Si un agente falla, la UI usa datos mock y lo avisa.
 
+## Funciones de la UI
+- **Pozos de ejemplo**: el selector del panel lateral carga los tres casos de demo (GO, CONDITIONAL, NO-GO) y los evalua con un clic.
+- **Zona recomendada**: en la pestana Geologia, el mapa dibuja la zona donde el pozo daria GO con un VAN10 de al menos el 75% del mejor punto.
+- **Costos y fiscalidad editables**: costos operativos (extraccion, transporte, administracion), regalias, impuestos, descuento del crudo local y retencion a la exportacion. Los valores por defecto reproducen los resultados originales.
+- **Mercado**: pestana con el WTI actual, historico, promedios de 20 y 50 dias y tendencia (fuente: Yahoo Finance, futuro CL=F). Si no hay red se usa `src/data/wti_history.csv`. Para actualizar ese respaldo: `python -m src.market.wti`. Con `PERFORIN_OFFLINE=1` no se consulta la red.
+- **Informe PDF**: boton "Descargar informe PDF" con veredicto, KPIs, supuestos, geologia y graficos.
+- **Unidades**: volumenes en barriles o metros cubicos.
+
 ## Estructura
 
 - `src/data/` generador del dataset sintetico y CSVs
 - `src/models/` pozos analogos, recomendador de ubicacion y entrenamiento del modelo de EUR
 - `src/agents/` un archivo por agente
+- `src/market/` WTI: valor actual, historico y tendencia
+- `src/report/` generador del informe PDF
 - `src/ui/app.py` frontend Streamlit con fallback a datos mock
 - `tests/` tests de cada modulo

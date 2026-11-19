@@ -1,6 +1,8 @@
 """Perforin - frontend Streamlit (pozos verticales). Ejecutar:  streamlit run src/ui/app.py"""
+import os
 import sys
 import time
+import unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -21,6 +23,18 @@ try:
     AGENTS_OK, IMPORT_ERR = True, ""
 except Exception as exc:  # noqa: BLE001
     AGENTS_OK, IMPORT_ERR = False, f"{type(exc).__name__}: {exc}"
+
+try:
+    from src.market.wti import analyze as wti_analyze
+    from src.market.wti import get_wti
+    MARKET_OK = True
+except Exception:  # noqa: BLE001
+    MARKET_OK = False
+try:
+    from src.report.pdf_report import build_pdf
+    REPORT_OK = True
+except Exception:  # noqa: BLE001
+    REPORT_OK = False
 
 COLORS = {"GO": "#16a34a", "CONDITIONAL": "#f59e0b", "NO-GO": "#dc2626"}
 VERDICT_TEXT = {
@@ -61,16 +75,37 @@ header[data-testid="stHeader"] {background: transparent;}
 """, unsafe_allow_html=True)
 # ------------------------------------------------------------------ banner
 st.markdown("<p class='brand'>Perforin</p><p class='tag'>¿Conviene perforar este pozo?</p>", unsafe_allow_html=True)
+# ------------------------------------------------------------------ mercado: WTI actual, histórico y tendencia
+@st.cache_data(ttl=900, show_spinner=False)
+def market_data():
+    """WTI en vivo (o el respaldo guardado si no hay red). Se cachea 15 minutos."""
+    d = get_wti(live=os.environ.get("PERFORIN_OFFLINE") != "1", timeout=5.0)
+    return {**d, "stats": wti_analyze(d["df"])}
+
+
+def market_safe():
+    if not MARKET_OK:
+        return None
+    try:
+        return market_data()
+    except Exception:  # noqa: BLE001
+        return None
+
+
 # ------------------------------------------------------------------ recomendación de ubicación (con respaldo)
 BASIN_CENTER = {"Neuquién": (-38.4, -69.2), "Golfo DanielSan": (-45.8, -68.5), "Cuyo Cuyo": (-33.1, -68.8),
                 "Astral": (-51.7, -69.7)}
 DEFAULT_GEOLOGY = {"depth_m": 2800.0, "net_pay_m": 25.0, "porosity_pct": 8.0, "permeability_md": 0.5,
                    "water_saturation_pct": 30.0, "skin_factor": 2.0}
+COST_KEYS = ("opex_loe_usd_bbl", "opex_gpt_usd_bbl", "opex_gna_usd_bbl", "royalty_pct", "prod_tax_pct",
+             "crude_discount_usd_bbl", "export_duty_pct")
+EMPTY_ZONE = {"n_points": 0, "points": [], "polygon": None, "threshold_npv10_usd_mm": 0.0}
 
 
 def mock_recommendation(basin, error=None):
     lat, lon = BASIN_CENTER.get(basin, (-38.4, -69.2))
     return {"mock": True, "error": error, "n_candidates_evaluated": 0, "seconds": 0.0, "alternatives": [],
+            "zone": dict(EMPTY_ZONE),
             "best": {"latitude": lat, "longitude": lon, "npv10_usd_mm": None, "irr_pct": None, "decision": None,
                      "reservoir_score": None, "estimated_geology": dict(DEFAULT_GEOLOGY),
                      "confidence": {"level": "baja", "mean_km_3_nearest": None, "nearest_km": None,
@@ -78,12 +113,10 @@ def mock_recommendation(basin, error=None):
 
 
 @st.cache_data(show_spinner=False)
-def get_recommendation(basin, formation, stim, wti, acid, proppant, loe, gpt, gna):
+def get_recommendation(basin, formation, stim, wti, acid, proppant, costs):
     if not AGENTS_OK:
         raise ImportError(IMPORT_ERR)
-    return GeologicalAgent().recommend_location(
-        basin, formation, stim, wti, acid, proppant,
-        opex={"opex_loe_usd_bbl": loe, "opex_gpt_usd_bbl": gpt, "opex_gna_usd_bbl": gna})
+    return GeologicalAgent().recommend_location(basin, formation, stim, wti, acid, proppant, opex=costs)
 
 
 @st.cache_data(show_spinner=False)
@@ -91,83 +124,182 @@ def load_history():
     return pd.read_csv(Path(__file__).resolve().parents[2] / "src" / "data" / "wells.csv")
 
 
-def _rec_args(basin, formation, stim, wti, acid, proppant, loe, gpt, gna):
+def _rec_args(basin, formation, stim, wti, acid, proppant, costs):
     return (basin, formation, stim, float(wti), acid if stim == "acidizing" else None,
-            proppant if stim == "small_frac" else None, float(loe), float(gpt), float(gna))
+            proppant if stim == "small_frac" else None, dict(costs))
+
+
+# ------------------------------------------------------------------ estado de los controles (valores por defecto)
+BASINS = ["Neuquién", "Golfo DanielSan", "Cuyo Cuyo", "Astral"]
+FORMATIONS = ["Oveja Muerta", "Mulichincho", "Pozo D-129 Bis", "Lajas Verdes", "3er Mulichincho"]
+STIM_LABELS = {"Ninguna": "none", "Acidificación": "acidizing", "Fractura Menor": "small_frac"}
+UI_DEFAULTS = {"basin": "Neuquién", "formation": "Oveja Muerta", "stim_label": "Acidificación", "acid": 20,
+               "proppant": 150, "wti": 65, "opex_loe": 6.0, "opex_gpt": 2.5, "opex_gna": 1.5, "royalty": 25.0,
+               "prod_tax": 7.5, "discount": 0.0, "duty": 0.0, "unit": "Barriles", "manual": False, "preset": "—",
+               "project_name": "", "author": ""}
+for _k, _v in UI_DEFAULTS.items():
+    st.session_state.setdefault(_k, _v)
+
+# Pozos de ejemplo: los tres casos de demostración (GO / CONDITIONAL / NO-GO), con geología cargada a mano.
+PRESETS = {
+    "Neuquién Star · pozo fuerte": dict(
+        basin="Neuquién", formation="Oveja Muerta", stim_label="Acidificación", acid=30, proppant=150, wti=65,
+        geology=dict(depth=2500, pay=35, phi=10.0, perm=0.8, sw=25.0, skin=0)),
+    "Astral Marginal · pozo dudoso": dict(
+        basin="Astral", formation="Lajas Verdes", stim_label="Ninguna", acid=20, proppant=150, wti=65,
+        geology=dict(depth=2800, pay=15, phi=6.5, perm=0.15, sw=30.0, skin=6)),
+    "Cuyo Cuyo Dud · pozo malo": dict(
+        basin="Cuyo Cuyo", formation="Oveja Muerta", stim_label="Acidificación", acid=30, proppant=150, wti=65,
+        geology=dict(depth=3800, pay=10, phi=5.0, perm=0.02, sw=40.0, skin=12)),
+}
+
+
+def cfg_key():
+    """Identifica la configuración actual: los sliders de geología manual se reinician cuando cambia."""
+    s = st.session_state
+    stim = STIM_LABELS[s["stim_label"]]
+    vals = (s["basin"], s["formation"], stim, s["wti"], s["acid"] if stim == "acidizing" else 0,
+            s["proppant"] if stim == "small_frac" else 0, s["opex_loe"], s["opex_gpt"], s["opex_gna"], s["royalty"],
+            s["prod_tax"], s["discount"], s["duty"])
+    return "|".join(f"{v:g}" if isinstance(v, (int, float)) else str(v) for v in vals)
+
+
+def apply_preset():
+    """Carga un pozo de ejemplo en todos los controles y pide evaluarlo enseguida."""
+    p = PRESETS.get(st.session_state["preset"])
+    if not p:
+        return
+    for k, v in UI_DEFAULTS.items():
+        if k not in ("unit", "preset", "project_name", "author"):
+            st.session_state[k] = v
+    for k in ("basin", "formation", "stim_label", "acid", "proppant", "wti"):
+        st.session_state[k] = p[k]
+    st.session_state["manual"] = True
+    ck = cfg_key()
+    for name, val in p["geology"].items():
+        st.session_state[f"geo_{name}_{ck}"] = val
+    st.session_state["run_now"] = True
+
+
+def _slug(text):
+    """Texto apto para nombre de archivo: sin tildes ni espacios."""
+    ascii_ = unicodedata.normalize("NFKD", str(text)).encode("ascii", "ignore").decode()
+    return "-".join(ascii_.lower().split())
+
+
+def use_market_wti():
+    m = market_safe()
+    if m:
+        st.session_state["wti"] = int(min(120, max(20, round(m["stats"]["last"]))))
+
+
+def geo_slider(label, name, lo, hi, default, step, ck, **kw):
+    """Slider de geología manual: el valor inicial solo se aplica la primera vez (o lo carga un ejemplo)."""
+    key = f"geo_{name}_{ck}"
+    if key not in st.session_state:
+        kw["value"] = default
+    return st.slider(label, lo, hi, step=step, key=key, **kw)
 
 
 # ------------------------------------------------------------------ sidebar
 with st.sidebar:
-    st.title("📋 Nuevo Pozo Propuesto")
-    basin = st.selectbox("Cuenca", ["Neuquién", "Golfo DanielSan", "Cuyo Cuyo", "Astral"], index=0,
-                         help="Zona geográfica donde se perforaría el pozo")
-    formation = st.selectbox("Formación", ["Oveja Muerta", "Mulichincho", "Pozo D-129 Bis", "Lajas Verdes", "3er Mulichincho"],
-                             index=0, help="La capa de roca específica donde está el petróleo")
-    stim_label = st.selectbox("Estimulación", ["Ninguna", "Acidificación", "Fractura Menor"], index=1,
+    st.markdown("<p class='sec'>Ejemplos</p>", unsafe_allow_html=True)
+    st.selectbox("Cargar un pozo de ejemplo", ["—"] + list(PRESETS), key="preset", on_change=apply_preset,
+                 help="Carga los parámetros de un caso de demostración y lo evalúa con un clic")
+    st.markdown("<p class='sec'>Pozo propuesto</p>", unsafe_allow_html=True)
+    basin = st.selectbox("Cuenca", BASINS, key="basin", help="Zona geográfica donde se perforaría el pozo")
+    formation = st.selectbox("Formación", FORMATIONS, key="formation",
+                             help="La capa de roca específica donde está el petróleo")
+    stim_label = st.selectbox("Estimulación", list(STIM_LABELS), key="stim_label",
                               help="Tratamiento para ayudar a que el petróleo fluya")
-    stim = {"Ninguna": "none", "Acidificación": "acidizing", "Fractura Menor": "small_frac"}[stim_label]
+    stim = STIM_LABELS[stim_label]
     acid, proppant = 0, 0
     if stim == "acidizing":
-        acid = st.slider("Volumen de Ácido (m³)", 5, 50, 20, 1,
+        acid = st.slider("Volumen de Ácido (m³)", 5, 50, step=1, key="acid",
                          help="Cantidad de ácido que se inyecta para limpiar la roca cerca del pozo")
     elif stim == "small_frac":
-        proppant = st.slider("Propante (toneladas)", 50, 500, 150, 10,
+        proppant = st.slider("Propante (toneladas)", 50, 500, step=10, key="proppant",
                              help="Arena que se inyecta para mantener abiertas las fracturas y que el petróleo fluya")
-    wti = st.slider("Precio WTI (USD/barril)", 20, 120, 65, 1,
-                    help="Precio actual del petróleo en USD por barril (WTI = referencia internacional)")
+    wti = st.slider("Precio WTI (USD/barril)", 20, 120, step=1, key="wti",
+                    help="Precio del petróleo en USD por barril (WTI = referencia internacional)")
+    _mk = market_safe()
+    if _mk:
+        _s = _mk["stats"]
+        st.caption(f"WTI de mercado: USD {_s['last']:.2f} · {'en vivo' if _mk['live'] else 'dato de respaldo'} "
+                   f"({_mk['as_of']:%d/%m}) · tendencia {_s['trend']}")
+        st.button("Usar el WTI de mercado", on_click=use_market_wti, key="use_wti")
     st.markdown("<p class='sec'>Costos operativos (USD por barril)</p>", unsafe_allow_html=True)
-    opex_loe = st.slider("Extracción (LOE)", 0.0, 30.0, 6.0, 0.25,
+    opex_loe = st.slider("Extracción (LOE)", 0.0, 30.0, step=0.25, key="opex_loe",
                          help="Costo de levantar el petróleo: energía, personal de campo, mantenimiento de pozos")
-    opex_gpt = st.slider("Transporte y procesamiento", 0.0, 15.0, 2.5, 0.25,
+    opex_gpt = st.slider("Transporte y procesamiento", 0.0, 15.0, step=0.25, key="opex_gpt",
                          help="Costo de llevar el crudo hasta la planta o el oleoducto y tratarlo")
-    opex_gna = st.slider("Administración (G&A)", 0.0, 10.0, 1.5, 0.25,
+    opex_gna = st.slider("Administración (G&A)", 0.0, 10.0, step=0.25, key="opex_gna",
                          help="Gastos generales y de administración asignados al pozo")
     st.caption(f"Costo total de operar: USD {opex_loe + opex_gpt + opex_gna:.2f} por barril")
+    with st.expander("Regalías, impuestos y precio del crudo"):
+        royalty = st.slider("Regalías (%)", 0.0, 30.0, step=0.5, key="royalty",
+                            help="Porcentaje de la venta que se paga a la provincia. La regalía base en Argentina "
+                                 "es 12%; puede ser mayor según el contrato.")
+        prod_tax = st.slider("Impuestos sobre la producción (%)", 0.0, 20.0, step=0.5, key="prod_tax",
+                             help="Impuestos que se pagan sobre lo que queda después de las regalías")
+        discount = st.slider("Descuento del crudo local (USD/bbl)", 0.0, 20.0, step=0.5, key="discount",
+                             help="El crudo local se vende con un descuento sobre la referencia internacional")
+        duty = st.slider("Retención a la exportación (%)", 0.0, 20.0, step=0.5, key="duty",
+                         help="Impuesto que se cobra sobre el precio cuando el crudo se exporta")
     st.markdown("<p class='sec'>Unidades</p>", unsafe_allow_html=True)
-    unit = st.radio("Volumen de petróleo", ["Barriles", "Metros cúbicos"], horizontal=True,
+    unit = st.radio("Volumen de petróleo", ["Barriles", "Metros cúbicos"], horizontal=True, key="unit",
                     help="En Argentina la producción se informa en m³ y en barriles. 1 barril = 0,159 m³")
+    COSTS = {"opex_loe_usd_bbl": opex_loe, "opex_gpt_usd_bbl": opex_gpt, "opex_gna_usd_bbl": opex_gna,
+             "royalty_pct": royalty, "prod_tax_pct": prod_tax, "crude_discount_usd_bbl": discount,
+             "export_duty_pct": duty}
     st.markdown("<p class='sec'>Ubicación y geología</p>", unsafe_allow_html=True)
     st.caption("El sistema propone dónde perforar y estima la geología de ese punto según el histórico de pozos.")
-    manual = st.checkbox("Ajustar la geología a mano", value=False,
+    manual = st.checkbox("Ajustar la geología a mano", key="manual",
                          help="Por defecto se usa la geología estimada en la ubicación recomendada. "
                               "Activá esto para cambiar los valores.")
     manual_geo = None
     if manual:
         try:
-            _prev = get_recommendation(*_rec_args(basin, formation, stim, wti, acid, proppant,
-                                                  opex_loe, opex_gpt, opex_gna))
+            _prev = get_recommendation(*_rec_args(basin, formation, stim, wti, acid, proppant, COSTS))
         except Exception as exc:  # noqa: BLE001
             _prev = mock_recommendation(basin, f"{type(exc).__name__}: {exc}")
         _g = _prev["best"]["estimated_geology"]
-        _k = f"{basin}|{formation}|{stim}|{wti}|{acid}|{proppant}|{opex_loe}|{opex_gpt}|{opex_gna}"
-        depth = st.slider("Profundidad (m)", 1000, 4500, int(min(4500, max(1000, round(_g["depth_m"], -2)))), 100,
-                          key=f"depth_{_k}", help="A cuántos metros de profundidad hay que perforar")
-        net_pay = st.slider("Espesor Neto (m)", 5, 50, int(min(50, max(5, round(_g["net_pay_m"])))), 1,
-                            key=f"pay_{_k}",
-                            help="Espesor de la capa de roca que contiene petróleo. Más gruesa = más petróleo")
-        porosity = st.slider("Porosidad (%)", 3.0, 15.0, float(min(15.0, max(3.0, round(_g["porosity_pct"], 1)))),
-                             0.1, key=f"phi_{_k}",
-                             help="Cuánto petróleo puede almacenar la roca, como una esponja. Más alto = más petróleo")
-        perm = st.slider("Permeabilidad (mD)", 0.001, 10.0,
-                         float(min(10.0, max(0.001, round(_g["permeability_md"], 3)))), 0.001, format="%.3f",
-                         key=f"k_{_k}", help="Qué tan fácil fluye el petróleo a través de la roca. Más alto = fluye mejor")
-        skin = st.slider("Factor de Daño (Skin)", -2, 20, int(min(20, max(-2, round(_g["skin_factor"])))), 1,
-                         key=f"skin_{_k}",
-                         help="Qué tan tapada está la zona del pozo. Más bajo es mejor. "
-                              "Negativo significa que fue tratado para fluir mejor")
+        _ck = cfg_key()
+        depth = geo_slider("Profundidad (m)", "depth", 1000, 4500,
+                           int(min(4500, max(1000, round(_g["depth_m"], -2)))), 100, _ck,
+                           help="A cuántos metros de profundidad hay que perforar")
+        net_pay = geo_slider("Espesor Neto (m)", "pay", 5, 50, int(min(50, max(5, round(_g["net_pay_m"])))), 1, _ck,
+                             help="Espesor de la capa de roca que contiene petróleo. Más gruesa = más petróleo")
+        porosity = geo_slider("Porosidad (%)", "phi", 3.0, 15.0, float(min(15.0, max(3.0, round(_g["porosity_pct"], 1)))),
+                              0.1, _ck, help="Cuánto petróleo puede almacenar la roca, como una esponja")
+        perm = geo_slider("Permeabilidad (mD)", "perm", 0.001, 10.0,
+                          float(min(10.0, max(0.001, round(_g["permeability_md"], 3)))), 0.001, _ck, format="%.3f",
+                          help="Qué tan fácil fluye el petróleo a través de la roca. Más alto = fluye mejor")
+        sw = geo_slider("Saturación de agua (%)", "sw", 20.0, 55.0,
+                        float(min(55.0, max(20.0, round(_g["water_saturation_pct"], 1)))), 0.5, _ck,
+                        help="Porcentaje de los poros ocupado por agua. Más bajo = más petróleo")
+        skin = geo_slider("Factor de Daño (Skin)", "skin", -2, 20, int(min(20, max(-2, round(_g["skin_factor"])))), 1,
+                          _ck, help="Qué tan tapada está la zona del pozo. Más bajo es mejor. "
+                                    "Negativo significa que fue tratado para fluir mejor")
         manual_geo = {"depth_m": depth, "net_pay_m": net_pay, "porosity_pct": porosity, "permeability_md": perm,
-                      "skin_factor": skin, "water_saturation_pct": float(_g["water_saturation_pct"])}
+                      "skin_factor": skin, "water_saturation_pct": sw}
+    with st.expander("Datos del informe PDF"):
+        st.text_input("Nombre del proyecto", key="project_name", max_chars=60,
+                      placeholder="Ej: Campaña Oveja Muerta 2026",
+                      help="Aparece como título del informe PDF y en el nombre del archivo")
+        st.text_input("Preparado por", key="author", max_chars=60, placeholder="Nombre o equipo",
+                      help="Opcional. Se muestra en el encabezado del informe")
     st.divider()
     simulate_fail = st.multiselect("Simular falla de un agente (demo del respaldo)",
                                    ["location", "geological", "forecasting", "economic"],
-                                   format_func=AGENT_NAME_ES.get,
+                                   format_func=AGENT_NAME_ES.get, key="simulate_fail",
                                    help="Muestra que la app sigue funcionando con datos de respaldo si un agente falla")
-    run_btn = st.button("🔍 Evaluar Pozo", type="primary", width="stretch")
-    st.caption("🟢 Agentes reales conectados" if AGENTS_OK else f"🟠 Modo demo: datos de respaldo ({IMPORT_ERR})")
+    run_btn = st.button("Evaluar pozo", type="primary", width="stretch", key="run_btn")
+    st.caption("Agentes reales conectados" if AGENTS_OK else f"Modo demo: datos de respaldo ({IMPORT_ERR})")
 
+run_btn = bool(run_btn or st.session_state.pop("run_now", False))
 request_input = {"basin": basin, "formation": formation, "stimulation_type": stim, "proppant_tonnes": proppant,
-                 "acid_volume_m3": acid, "wti_price_usd": wti, "opex_loe_usd_bbl": opex_loe,
-                 "opex_gpt_usd_bbl": opex_gpt, "opex_gna_usd_bbl": opex_gna}
+                 "acid_volume_m3": acid, "wti_price_usd": wti, **COSTS}
 
 # ------------------------------------------------------------------ unidades (los agentes trabajan en bbl y MMBOE)
 M3_PER_BBL = 0.158987
@@ -284,8 +416,7 @@ def run_pipeline(request, manual_geology, on_status):
             raise ImportError(IMPORT_ERR)
         rec = get_recommendation(*_rec_args(request["basin"], request["formation"], request["stimulation_type"],
                                             request["wti_price_usd"], request["acid_volume_m3"],
-                                            request["proppant_tonnes"], request["opex_loe_usd_bbl"],
-                                            request["opex_gpt_usd_bbl"], request["opex_gna_usd_bbl"]))
+                                            request["proppant_tonnes"], {k: request[k] for k in COST_KEYS}))
     except Exception as exc:  # noqa: BLE001
         rec_err = f"{type(exc).__name__}: {exc}"
         rec = mock_recommendation(request["basin"], rec_err)
@@ -358,7 +489,8 @@ def style(fig, h=380):
 
 # ------------------------------------------------------------------ layout: veredicto + tabs
 verdict_box = st.container()
-tab_sum, tab_geo, tab_fc, tab_eco, tab_pipe = st.tabs(["Resumen", "Geología", "Producción", "Economía", "Agentes"])
+tab_sum, tab_geo, tab_fc, tab_eco, tab_mkt, tab_pipe = st.tabs(
+    ["Resumen", "Geología", "Producción", "Economía", "Mercado", "Agentes"], key="main_tabs", on_change="rerun")
 
 with tab_pipe:
     sec("Cuatro agentes, uno tras otro")
@@ -414,6 +546,24 @@ with verdict_box:
     ]), unsafe_allow_html=True)
     if res["any_mock"]:
         st.warning("Uno o más agentes fallaron y se muestran datos de respaldo (mock). Mirá la pestaña Agentes.")
+    if REPORT_OK:
+        try:
+            _m = market_safe()
+            _note = f"mercado: USD {_m['stats']['last']:.2f} al {_m['as_of']:%d/%m/%Y}" if _m else ""
+            try:
+                _h = load_history()
+                _hb = _h[_h.basin == well["basin"]]
+                _wells = [(float(a), float(b), float(c)) for a, b, c in zip(_hb.latitude, _hb.longitude, _hb.eur_mmboe)]
+            except Exception:  # noqa: BLE001 - sin histórico el informe sale igual, sin pozos en el mapa
+                _wells = None
+            _proj = st.session_state.get("project_name", "").strip()
+            _fname = f"{_slug(_proj)}.pdf" if _slug(_proj) else f"perforin-{_slug(well['basin'])}-{_slug(well['formation'])}.pdf"
+            st.download_button("Descargar informe PDF",
+                               build_pdf(res, use_m3=USE_M3, summary=recomendacion(eco, fc, well), wti_note=_note,
+                                         project=_proj, author=st.session_state.get("author", ""), wells=_wells),
+                               file_name=_fname, mime="application/pdf", key="dl_pdf")
+        except Exception as exc:  # noqa: BLE001
+            st.caption(f"No se pudo generar el informe PDF ({type(exc).__name__}: {exc})")
 
 # ------------------------------------------------------------------ tab: resumen
 with tab_sum:
@@ -444,6 +594,7 @@ with tab_sum:
 with tab_geo:
     best = rec["best"]
     conf = best["confidence"]
+    zone = rec.get("zone") or EMPTY_ZONE
     sec("Dónde conviene perforar · según el histórico de pozos")
     if rec.get("mock"):
         st.warning("No se pudo calcular la recomendación: se muestra el centro de la cuenca y una geología de respaldo.")
@@ -452,7 +603,7 @@ with tab_geo:
         ("Longitud", f"{best['longitude']:.4f}°", "ubicación recomendada"),
         ("Confianza", conf["level"], "" if conf["mean_km_3_nearest"] is None
          else f"pozos de referencia a {conf['mean_km_3_nearest']} km"),
-        ("Puntos evaluados", f"{rec['n_candidates_evaluated']}", f"en {rec['seconds']} s"),
+        ("Zona viable", f"{zone['n_points']} puntos", f"de {rec['n_candidates_evaluated']} evaluados"),
     ]), unsafe_allow_html=True)
     if res["manual"]:
         st.caption("Geología ajustada a mano: se usan tus valores; la ubicación es la que el histórico recomienda.")
@@ -462,11 +613,23 @@ with tab_geo:
     except Exception:  # noqa: BLE001
         hist = None
         st.caption("No se pudo cargar el histórico de pozos para dibujar el mapa.")
-    if hist is not None:
+    if not tab_geo.open:
+        st.caption("El mapa se carga al abrir esta pestaña.")
+    if hist is not None and tab_geo.open:
         hb = hist[hist.basin == well["basin"]]
         ha = hb[hb.well_id.isin({a["well_id"] for a in geo["analog_wells"]})]
         eur_disp = hb.eur_mmboe * 1000 * (M3_PER_BBL if USE_M3 else 1.0)
         fmap = go.Figure()
+        if zone["polygon"]:
+            fmap.add_trace(go.Scattermap(
+                lat=[p[0] for p in zone["polygon"]], lon=[p[1] for p in zone["polygon"]], mode="lines",
+                fill="toself", fillcolor="rgba(21,128,61,.16)", line=dict(color="#15803d", width=2),
+                name="Zona recomendada", hoverinfo="skip"))
+        if zone["points"]:
+            fmap.add_trace(go.Scattermap(
+                lat=[p[0] for p in zone["points"]], lon=[p[1] for p in zone["points"]], mode="markers",
+                name="Puntos viables", marker=dict(size=7, color="#15803d", opacity=0.6),
+                text=[f"VAN10 USD {p[2]:.1f} MM" for p in zone["points"]], hoverinfo="text"))
         fmap.add_trace(go.Scattermap(
             lat=hb.latitude, lon=hb.longitude, mode="markers", name="Pozos perforados",
             marker=dict(size=10, color=eur_disp, colorscale="Greys", cmin=0, cmax=float(eur_disp.max()),
@@ -486,9 +649,16 @@ with tab_geo:
         fmap.update_layout(map=dict(style="carto-positron", zoom=7,
                                     center=dict(lat=best["latitude"], lon=best["longitude"])),
                            height=440, margin=dict(l=0, r=0, t=0, b=0), font=dict(size=13, color="#1c1917"),
+                           uirevision=f"{best['latitude']}{best['longitude']}",
                            legend=dict(orientation="h", y=1.04, x=0, bgcolor="rgba(255,255,255,.8)"))
-        st.plotly_chart(fmap, width="stretch")
-        st.caption("Solo referencia visual. Cada punto es un pozo perforado; más oscuro = más petróleo recuperado.")
+        st.plotly_chart(fmap, width="stretch", key="map_geo")
+        if zone["n_points"]:
+            st.caption(f"Zona verde: puntos evaluados donde el pozo daría GO con un VAN10 de al menos USD "
+                       f"{zone['threshold_npv10_usd_mm']:.1f} MM (75% del mejor). Cada punto gris es un pozo "
+                       "perforado; más oscuro = más petróleo recuperado.")
+        else:
+            st.caption("No hay una zona rentable con estos supuestos. Cada punto gris es un pozo perforado; "
+                       "más oscuro = más petróleo recuperado.")
 
     g1, g2 = st.columns([1, 1.2], gap="large")
     with g1:
@@ -570,12 +740,15 @@ with tab_eco:
     u = eco["unit_economics_usd_bbl"]
     bd = u["opex_breakdown_per_bbl"]
     mcolor = "#15803d" if u["operating_margin_per_bbl"] > 0 else "#b91c1c"
+    _disc, _duty = well.get("crude_discount_usd_bbl") or 0, well.get("export_duty_pct") or 0
+    _px_hint = "por barril" if not (_disc or _duty) else (
+        f"WTI {eco['wti_price_usd']:.0f} menos descuento {_disc:g} y retención {_duty:g}%")
     sec("Cuánto cuesta operar un barril")
     ucol, uchart = st.columns([1, 1.6], gap="large")
     with ucol:
         st.markdown(kpi("Costo de operar", f"USD {u['cost_per_bbl']:.2f} / bbl",
                         f"Extracción {bd['LOE']:.2f}<br>Transporte {bd['GPT']:.2f}<br>Administración {bd['G&A']:.2f}")
-                    + kpi("Precio de venta (WTI)", f"USD {u['price_per_bbl']:.2f} / bbl", "por barril")
+                    + kpi("Precio realizado", f"USD {u['price_per_bbl']:.2f} / bbl", _px_hint)
                     + f"<div class='kpi'><div class='l'>Margen por barril</div><div class='n' style='color:{mcolor}'>"
                       f"USD {u['operating_margin_per_bbl']:.2f} / bbl</div><div class='h'>tras operar, regalías e impuestos</div></div>",
                     unsafe_allow_html=True)
@@ -591,7 +764,7 @@ with tab_eco:
         fu.update_layout(barmode="relative", yaxis_title="USD por barril")
         st.plotly_chart(style(fu, 360), width="stretch")
     st.caption("Costo de operar = LOE + transporte y procesamiento + administración. No incluye el CAPEX. "
-               "Regalías (25%) e impuestos (7.5%) se pagan sobre la venta.")
+               f"Regalías ({well.get('royalty_pct', 25):g}%) e impuestos ({well.get('prod_tax_pct', 7.5):g}%) se pagan sobre la venta.")
 
     c1, c2 = st.columns(2, gap="large")
     with c1:
@@ -612,6 +785,51 @@ with tab_eco:
                                text=[f"{v:.2f}" for v in vals], textposition="outside", marker_color="#1c1917"))
         fc2.update_layout(yaxis=dict(autorange="reversed"), xaxis=dict(range=[0, max(vals) * 1.3]))
         st.plotly_chart(style(fc2, 380), width="stretch")
+
+# ------------------------------------------------------------------ tab: mercado (WTI)
+with tab_mkt:
+    mk = market_safe()
+    if not mk:
+        st.info("No hay datos de mercado disponibles en este momento.")
+    else:
+        ms, wdf = mk["stats"], mk["df"]
+        sec(f"WTI · {'en vivo' if mk['live'] else 'dato de respaldo guardado'} · {mk['as_of']:%d/%m/%Y}")
+        st.markdown(kpi_row([
+            ("WTI actual", f"USD {ms['last']:.2f}", "futuro, primer vencimiento"),
+            ("Variación 1 día", f"{ms['change_1d_pct']:+.1f} %", "contra el cierre anterior"),
+            ("Variación 30 días", f"{ms['change_30d_pct']:+.1f} %", f"tendencia {ms['trend']}"),
+            ("Rango 52 semanas", f"{ms['low_52w']:.0f} a {ms['high_52w']:.0f}", "USD por barril"),
+        ]), unsafe_allow_html=True)
+        periods = {"3 meses": 63, "6 meses": 126, "1 año": 252, "2 años": 504}
+        pick = st.radio("Período", list(periods), index=2, horizontal=True, key="mkt_period",
+                        label_visibility="collapsed")
+        full = wdf.assign(sma20=wdf["close"].rolling(20).mean(), sma50=wdf["close"].rolling(50).mean())
+        view = full.tail(periods[pick])
+        fw = go.Figure()
+        fw.add_trace(go.Scatter(x=view["date"], y=view["close"], name="WTI", line=dict(color="#1c1917", width=2)))
+        fw.add_trace(go.Scatter(x=view["date"], y=view["sma20"], name="Promedio 20 días",
+                                line=dict(color="#b45309", width=1.5)))
+        fw.add_trace(go.Scatter(x=view["date"], y=view["sma50"], name="Promedio 50 días",
+                                line=dict(color="#a8a29e", width=1.5, dash="dot")))
+        fw.add_hline(y=eco["breakeven_wti_usd"], line_dash="dash", line_color=COLORS[dec],
+                     annotation_text=f"break-even del pozo · USD {eco['breakeven_wti_usd']:.0f}",
+                     annotation_position="bottom right")
+        fw.update_layout(yaxis_title="USD por barril")
+        st.plotly_chart(style(fw, 400), width="stretch", key="chart_wti")
+        gap_word = "por encima" if ms["sma_gap_pct"] > 0 else "por debajo"
+        st.markdown(f"**Tendencia {ms['trend']}.** El promedio de 20 días (USD {ms['sma20']:.1f}) está {gap_word} "
+                    f"del de 50 días (USD {ms['sma50']:.1f}). En los últimos 30 días el precio varió "
+                    f"{ms['change_30d_pct']:+.1f}% y la volatilidad anualizada es {ms['volatility_pct']:.0f}%.")
+        margin = ms["last"] - eco["breakeven_wti_usd"]
+        st.markdown(f"Con el WTI de mercado (USD {ms['last']:.2f}) este pozo queda USD {abs(margin):.2f} "
+                    f"{'por encima' if margin >= 0 else 'por debajo'} de su precio de equilibrio "
+                    f"(USD {eco['breakeven_wti_usd']:.2f}).")
+        if abs(ms["last"] - eco["wti_price_usd"]) >= 1:
+            st.caption(f"El análisis actual usa USD {eco['wti_price_usd']:.0f}. Para recalcular con el precio de "
+                       "mercado, usá el botón \"Usar el WTI de mercado\" del panel izquierdo y evaluá de nuevo.")
+        if not mk["live"] and mk.get("error"):
+            st.caption(f"No se pudo consultar el mercado en vivo ({mk['error']}). Se muestra el último dato guardado.")
+        st.caption("Referencia informativa del precio de mercado. No es una predicción ni una recomendación de inversión.")
 
 # ------------------------------------------------------------------ tab: agentes (detalle)
 with tab_pipe:
