@@ -124,7 +124,12 @@ def step_economico(run_dir: Path) -> dict:
 
     eco = EconomicAgent().run(read_json(run_dir, "pronostico"), read_json(run_dir, "ingesta"))
     write_json(run_dir / FILES["economico"], eco)
-    return {"decision": eco["decision"], "van10_usd_mm": eco["npv10_usd_mm"], "tir_pct": eco["irr_pct"],
+    informe = None
+    try:  # si están todos los pasos previos, deja el informe listo
+        informe = str(write_report(run_dir))
+    except CliError:
+        pass
+    return {"informe": informe, "decision": eco["decision"], "van10_usd_mm": eco["npv10_usd_mm"], "tir_pct": eco["irr_pct"],
             "repago_meses": eco["payback_months"], "breakeven_usd_bbl": eco["breakeven_wti_usd"]}
 
 

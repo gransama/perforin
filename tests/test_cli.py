@@ -81,3 +81,9 @@ def test_request_file_with_bom_is_accepted(tmp_path):
     d.mkdir()
     (d / "00_solicitud.json").write_bytes(b"\xef\xbb\xbf" + json.dumps(SOLICITUD, ensure_ascii=False).encode("utf-8"))
     assert cli.main(["paso", "recomendar", "--dir", str(d)]) == 0
+
+def test_economic_step_leaves_the_report_ready(tmp_path):
+    d = _setup(tmp_path)
+    for name in cli.STEPS:
+        assert cli.main(["paso", name, "--dir", str(d)]) == 0
+    assert (d / "informe.md").exists()
