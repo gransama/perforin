@@ -91,8 +91,9 @@ def _evaluate(request: dict, lat: float, lon: float, est: dict) -> dict:
 
 def recommend(basin: str, formation: str, stimulation_type: str, wti_price_usd: float,
               acid_volume_m3: float | None = None, proppant_tonnes: float | None = None,
-              n_alternatives: int = 2) -> dict:
-    """Devuelve la ubicación recomendada (mayor NPV10) y hasta n_alternatives alternativas separadas >= 10 km."""
+              n_alternatives: int = 2, opex: dict | None = None) -> dict:
+    """Devuelve la ubicación recomendada (mayor NPV10) y hasta n_alternatives alternativas separadas >= 10 km.
+    opex: costos operativos opcionales {opex_loe_usd_bbl, opex_gpt_usd_bbl, opex_gna_usd_bbl} (USD/bbl)."""
     t0 = time.perf_counter()
     df = _wells()
     bw = df[df.basin == basin]
@@ -107,6 +108,8 @@ def recommend(basin: str, formation: str, stimulation_type: str, wti_price_usd: 
         "proppant_tonnes": float(DEFAULT_PROPPANT_T if proppant_tonnes is None else proppant_tonnes)
         if stimulation_type == "small_frac" else 0.0,
     }
+    request.update({k: float(v) for k, v in (opex or {}).items()
+                    if k in ("opex_loe_usd_bbl", "opex_gpt_usd_bbl", "opex_gna_usd_bbl") and v is not None})
 
     la0, la1 = bw.latitude.min() - BOX_MARGIN_DEG, bw.latitude.max() + BOX_MARGIN_DEG
     lo0, lo1 = bw.longitude.min() - BOX_MARGIN_DEG, bw.longitude.max() + BOX_MARGIN_DEG

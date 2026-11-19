@@ -25,22 +25,22 @@ OUT_DIR = Path(__file__).resolve().parent
 # Cada cuenca: caja geográfica (lat_min, lat_max, lon_min, lon_max), zonas buenas ("sweet spots") como
 # (lat, lon, sigma_km) y 'grad' = peso (lat, lon) del gradiente de profundidad dentro de la caja.
 BASINS = {
-    "Permian":    dict(n=80, formations=["Wolfcamp", "Bone Spring"], depth=(1500, 3500),
+    "Neuquién": dict(n=80, formations=["Oveja Muerta", "Mulichincho"], depth=(1500, 3500),
                        phi=8.0, k=0.5, di=(0.04, 0.10), b=(0.3, 1.0), code="PRM",
-                       box=(32.0, 33.2, -103.2, -101.6), grad=(0.5, 0.5),
-                       hotspots=[(32.6, -102.4, 28), (32.3, -102.9, 20)]),
-    "Eagle Ford": dict(n=50, formations=["Eagle Ford Shale"], depth=(1200, 3200),
+                       box=(-39.0, -37.8, -70.0, -68.4), grad=(0.5, 0.5),
+                       hotspots=[(-38.4, -69.2, 28), (-38.7, -69.7, 20)]),
+    "Golfo DanielSan": dict(n=50, formations=["Pozo D-129 Bis"], depth=(1200, 3200),
                        phi=7.0, k=0.1, di=(0.05, 0.12), b=(0.4, 1.1), code="EGF",
-                       box=(28.2, 29.6, -99.2, -97.8), grad=(0.0, 1.0),
-                       hotspots=[(28.9, -98.5, 30)]),
-    "Delaware":   dict(n=40, formations=["Wolfcamp", "3rd Bone Spring"], depth=(1800, 4200),
+                       box=(-46.5, -45.1, -69.2, -67.8), grad=(0.0, 1.0),
+                       hotspots=[(-45.8, -68.5, 30)]),
+    "Cuyo Cuyo": dict(n=40, formations=["Oveja Muerta", "3er Mulichincho"], depth=(1800, 4200),
                        phi=6.0, k=0.05, di=(0.05, 0.11), b=(0.5, 1.2), code="DEL",
-                       box=(30.8, 32.3, -104.7, -103.4), grad=(0.6, 0.4),
-                       hotspots=[(31.6, -104.0, 28), (31.2, -103.8, 18)]),
-    "Midland":    dict(n=30, formations=["Wolfcamp", "Spraberry"], depth=(1200, 3000),
+                       box=(-33.9, -32.4, -69.4, -68.1), grad=(0.6, 0.4),
+                       hotspots=[(-33.1, -68.8, 28), (-33.5, -68.6, 18)]),
+    "Astral": dict(n=30, formations=["Oveja Muerta", "Lajas Verdes"], depth=(1200, 3000),
                        phi=7.5, k=0.3, di=(0.04, 0.10), b=(0.3, 0.9), code="MID",
-                       box=(31.0, 31.9, -102.7, -101.3), grad=(0.3, 0.7),
-                       hotspots=[(31.5, -102.0, 24)]),
+                       box=(-52.2, -51.3, -70.4, -69.0), grad=(0.3, 0.7),
+                       hotspots=[(-51.7, -69.7, 24)]),
 }
 MIN_SPACING_KM = 0.8   # separación mínima entre pozos (no se perfora encima de otro)
 

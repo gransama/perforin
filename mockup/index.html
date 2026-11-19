@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Perforin · maqueta</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{--bg:#fafaf9;--panel:#fff;--line:#e7e5e4;--ink:#1c1917;--mute:#78716c;--go:#15803d;--cond:#b45309;--nogo:#b91c1c;--acc:#1c1917}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,"Segoe UI",Inter,sans-serif}
+  .app{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+  aside{border-right:1px solid var(--line);background:var(--panel);padding:28px 24px}
+  .brand{font-size:20px;font-weight:700;letter-spacing:-.02em;margin-bottom:2px}
+  .tag{color:var(--mute);font-size:13px;margin-bottom:28px}
+  label{display:block;font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em;margin:18px 0 6px}
+  select,input[type=range]{width:100%}
+  select{padding:8px;border:1px solid var(--line);border-radius:6px;background:#fff;font:inherit}
+  .row{display:flex;justify-content:space-between;font-size:13px}
+  .row b{font-weight:600}
+  button{width:100%;margin-top:28px;padding:11px;border:0;border-radius:6px;background:var(--acc);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+  main{padding:40px 56px;max-width:1000px}
+  .well{color:var(--mute);font-size:13px;margin-bottom:6px}
+  .verdict{display:flex;align-items:baseline;gap:16px;padding-bottom:24px;border-bottom:1px solid var(--line)}
+  .verdict .v{font-size:44px;font-weight:700;letter-spacing:-.03em;color:var(--go)}
+  .verdict .t{color:var(--mute)}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-bottom:1px solid var(--line)}
+  .kpi{padding:22px 0}
+  .kpi+.kpi{padding-left:24px;border-left:1px solid var(--line)}
+  .kpi .l{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+  .kpi .n{font-size:28px;font-weight:600;letter-spacing:-.02em}
+  nav{display:flex;gap:28px;margin:28px 0 20px;border-bottom:1px solid var(--line)}
+  nav a{padding-bottom:10px;color:var(--mute);text-decoration:none;font-weight:500;cursor:pointer}
+  nav a.on{color:var(--ink);border-bottom:2px solid var(--ink);margin-bottom:-1px}
+  .grid{display:grid;grid-template-columns:1.4fr 1fr;gap:40px}
+  h3{font-size:13px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em;font-weight:500;margin:0 0 12px}
+  .bar{display:grid;grid-template-columns:130px 1fr 32px;gap:12px;align-items:center;margin:9px 0;font-size:13px}
+  .bar i{display:block;height:6px;background:var(--line);border-radius:3px;position:relative}
+  .bar i::after{content:"";position:absolute;inset:0;width:var(--w);background:var(--ink);border-radius:3px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  td,th{text-align:left;padding:8px 0;border-bottom:1px solid var(--line)}
+  th{color:var(--mute);font-weight:500}
+  .agents{display:flex;gap:8px;align-items:center;margin-top:36px;font-size:12px;color:var(--mute)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--go);display:inline-block;margin-right:5px}
+  .note{margin-top:20px;color:var(--mute);font-size:14px;max-width:62ch}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand">Perforin</div>
+    <div class="tag">¿Conviene perforar este pozo?</div>
+
+    <label>Cuenca</label>
+    <select><option>Neuquién</option><option>Golfo DanielSan</option><option>Cuyo Cuyo</option><option>Astral</option></select>
+    <label>Formación</label>
+    <select><option>Oveja Muerta</option><option>Mulichincho</option><option>Pozo D-129 Bis</option><option>Lajas Verdes</option></select>
+
+    <label>Profundidad</label><div class="row"><span></span><b>2.800 m</b></div><input type="range" value="60">
+    <label>Espesor neto</label><div class="row"><span></span><b>25 m</b></div><input type="range" value="45">
+    <label>Porosidad</label><div class="row"><span></span><b>8,0 %</b></div><input type="range" value="42">
+    <label>Permeabilidad</label><div class="row"><span></span><b>0,5 mD</b></div><input type="range" value="30">
+    <label>Precio WTI</label><div class="row"><span></span><b>USD 65</b></div><input type="range" value="45">
+    <button>Evaluar pozo</button>
+  </aside>
+
+  <main>
+    <div class="well">Neuquién · Oveja Muerta · 2.800 m</div>
+    <div class="verdict"><div class="v">Perforar</div><div class="t">GO · el pozo es rentable al precio actual</div></div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="l">VAN10</div><div class="n">USD 13,3 MM</div></div>
+      <div class="kpi"><div class="l">TIR</div><div class="n">171 %</div></div>
+      <div class="kpi"><div class="l">Repago</div><div class="n">6 meses</div></div>
+      <div class="kpi"><div class="l">Break-even</div><div class="n">USD 26 / bbl</div></div>
+    </div>
+
+    <nav><a class="on">Resumen</a><a>Geología</a><a>Producción</a><a>Economía</a><a>Agentes</a></nav>
+
+    <div class="grid">
+      <section>
+        <h3>Flujo de caja acumulado (USD MM)</h3>
+        <svg viewBox="0 0 520 190" width="100%" role="img" aria-label="Flujo de caja acumulado">
+          <line x1="0" y1="120" x2="520" y2="120" stroke="#e7e5e4"/>
+          <path d="M0 140 C 40 160, 60 150, 100 115 S 200 50, 300 32 S 450 14, 520 10" fill="none" stroke="#1c1917" stroke-width="2"/>
+          <circle cx="102" cy="116" r="4" fill="#15803d"/>
+          <text x="112" y="112" font-size="11" fill="#78716c">repago · mes 6</text>
+        </svg>
+        <p class="note">Con WTI a USD 65 y una inversión de USD 4,0 MM, el pozo recupera la inversión en 6 meses. Hay USD 39 de margen sobre el precio de equilibrio.</p>
+      </section>
+      <section>
+        <h3>Calidad de roca · 73 / 100 · riesgo bajo</h3>
+        <div class="bar"><span>Porosidad</span><i style="--w:70%"></i><b>70</b></div>
+        <div class="bar"><span>Permeabilidad</span><i style="--w:78%"></i><b>78</b></div>
+        <div class="bar"><span>Espesor neto</span><i style="--w:62%"></i><b>62</b></div>
+        <div class="bar"><span>Daño (skin)</span><i style="--w:85%"></i><b>85</b></div>
+        <div class="bar"><span>Profundidad</span><i style="--w:100%"></i><b>100</b></div>
+        <h3 style="margin-top:28px">Pozos análogos</h3>
+        <table>
+          <tr><th>Pozo</th><th>EUR (MMBOE)</th></tr>
+          <tr><td>NEU-OM-014</td><td>0,58</td></tr>
+          <tr><td>NEU-OM-027</td><td>0,61</td></tr>
+          <tr><td>NEU-MU-009</td><td>0,55</td></tr>
+        </table>
+      </section>
+    </div>
+
+    <div class="agents"><span><span class="dot"></span>Ingesta</span>→<span><span class="dot"></span>Geológico</span>→<span><span class="dot"></span>Pronóstico</span>→<span><span class="dot"></span>Económico</span></div>
+  </main>
+</div>
+</body>
+</html>

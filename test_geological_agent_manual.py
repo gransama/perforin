@@ -1,8 +1,8 @@
-﻿from agents.geological_agent import GeologicalAgent
+from agents.geological_agent import GeologicalAgent
 
 test_well = {
     "well_id": "TEST-001",
-    "basin": "Permian", "formation": "Wolfcamp",
+    "basin": "Neuquién", "formation": "Oveja Muerta",
     "depth_m": 2800, "net_pay_m": 25, "porosity_pct": 8.5,
     "permeability_md": 0.4, "water_saturation_pct": 30,
     "skin_factor": 2.0, "stimulation_type": "acidizing",

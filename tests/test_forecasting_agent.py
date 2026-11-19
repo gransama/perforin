@@ -3,7 +3,7 @@ import pytest
 from src.agents.forecasting_agent import ForecastingAgent
 from src.agents.geological_agent import GeologicalAgent
 
-WELL = dict(well_id="T-1", basin="Permian", formation="Wolfcamp", depth_m=2800, net_pay_m=25, porosity_pct=8.5,
+WELL = dict(well_id="T-1", basin="Neuquién", formation="Oveja Muerta", depth_m=2800, net_pay_m=25, porosity_pct=8.5,
             permeability_md=0.4, water_saturation_pct=30, skin_factor=2.0, stimulation_type="acidizing",
             proppant_tonnes=0, acid_volume_m3=20, wti_price_usd=65.0)
 

@@ -1,4 +1,4 @@
-# WellProfitAI
+# Perforin
 
 Sistema de 4 agentes que decide si conviene perforar un **pozo vertical** (GO / CONDITIONAL / NO-GO). Datos 100% sinteticos, valores en USD.
 

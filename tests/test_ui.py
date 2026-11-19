@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,9 @@ def _verdict(at):
     return next(m.value for m in at.markdown if "class='verdict'" in m.value)
 
 
+COORDS = re.compile(r"-?\d+\.\d{4}, -?\d+\.\d{4}")
+
+
 def test_initial_screen_asks_to_configure():
     at = _app()
     assert not at.exception
@@ -31,7 +35,7 @@ def test_initial_screen_asks_to_configure():
 def test_evaluation_shows_recommended_location():
     at = _evaluate(_app())
     v = _verdict(at)
-    assert "📍" in v and any(d in v for d in ("GO", "CONDITIONAL", "NO-GO"))
+    assert COORDS.search(v) and any(d in v for d in ("GO", "CONDITIONAL", "NO-GO"))
     assert not at.warning                      # sin datos de respaldo
 
 
@@ -49,4 +53,4 @@ def test_fallback_when_agent_fails(agent):
     at.multiselect[0].set_value([agent])
     _evaluate(at)
     assert at.warning                          # avisa que usa datos de respaldo
-    assert "📍" in _verdict(at)
+    assert COORDS.search(_verdict(at))
