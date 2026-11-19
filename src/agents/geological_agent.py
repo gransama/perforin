@@ -9,12 +9,12 @@ WEIGHTS = {"porosity": 0.25, "permeability": 0.25, "net_pay": 0.25, "skin": 0.15
 
 # Rango óptimo de profundidad (m) por formación
 OPTIMAL_DEPTH_M = {
-    "Wolfcamp": (2000, 3200),
-    "Bone Spring": (1800, 2800),
-    "Eagle Ford Shale": (1500, 2800),
-    "Spraberry": (1200, 2500),
+    "Oveja Muerta": (2000, 3200),
+    "Mulichincho": (1800, 2800),
+    "Pozo D-129 Bis": (1500, 2800),
+    "Lajas Verdes": (1200, 2500),
 }
-FORMATION_ALIASES = {"3rd Bone Spring": "Bone Spring"}  # existe en el dataset (Delaware)
+FORMATION_ALIASES = {"3er Mulichincho": "Mulichincho"}  # existe en el dataset (Cuyo Cuyo)
 DEPTH_FALLOFF_M = 1000.0  # el depth_score llega a 0 a esta distancia fuera del rango óptimo
 
 REQUIRED = ["formation", "depth_m", "net_pay_m", "porosity_pct", "permeability_md", "skin_factor"]

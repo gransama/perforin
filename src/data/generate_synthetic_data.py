@@ -1,4 +1,4 @@
-﻿"""Genera 200 pozos verticales sintéticos + perfiles de producción Arps (30 años). Costos en USD.
+"""Genera 200 pozos verticales sintéticos + perfiles de producción Arps (30 años). Costos en USD.
 
 Sin pozos horizontales, sin longitud lateral, sin fracturamiento multi-etapa.
 Uso (desde la raíz del proyecto):  python src/data/generate_synthetic_data.py
@@ -23,13 +23,13 @@ CAPEX_MIN, CAPEX_MAX = 1.5, 7.0
 OUT_DIR = Path(__file__).resolve().parent
 
 BASINS = {
-    "Permian":    dict(n=80, formations=["Wolfcamp", "Bone Spring"], depth=(1500, 3500),
+    "Neuquién":    dict(n=80, formations=["Oveja Muerta", "Mulichincho"], depth=(1500, 3500),
                        phi=8.0, k=0.5, di=(0.04, 0.10), b=(0.3, 1.0), loc=(32.2, -102.3), code="PRM"),
-    "Eagle Ford": dict(n=50, formations=["Eagle Ford Shale"], depth=(1200, 3200),
+    "Golfo DanielSan": dict(n=50, formations=["Pozo D-129 Bis"], depth=(1200, 3200),
                        phi=7.0, k=0.1, di=(0.05, 0.12), b=(0.4, 1.1), loc=(28.9, -98.3), code="EGF"),
-    "Delaware":   dict(n=40, formations=["Wolfcamp", "3rd Bone Spring"], depth=(1800, 4200),
+    "Cuyo Cuyo":   dict(n=40, formations=["Oveja Muerta", "3er Mulichincho"], depth=(1800, 4200),
                        phi=6.0, k=0.05, di=(0.05, 0.11), b=(0.5, 1.2), loc=(31.6, -103.9), code="DEL"),
-    "Midland":    dict(n=30, formations=["Wolfcamp", "Spraberry"], depth=(1200, 3000),
+    "Astral":    dict(n=30, formations=["Oveja Muerta", "Lajas Verdes"], depth=(1200, 3000),
                        phi=7.5, k=0.3, di=(0.04, 0.10), b=(0.3, 0.9), loc=(31.9, -102.0), code="MID"),
 }
 

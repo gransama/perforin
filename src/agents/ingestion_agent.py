@@ -4,8 +4,8 @@ from __future__ import annotations
 import itertools
 import math
 
-BASINS = ["Permian", "Eagle Ford", "Delaware", "Midland"]
-FORMATIONS = ["Wolfcamp", "Bone Spring", "Eagle Ford Shale", "Spraberry", "3rd Bone Spring"]
+BASINS = ["Neuquién", "Golfo DanielSan", "Cuyo Cuyo", "Astral"]
+FORMATIONS = ["Oveja Muerta", "Mulichincho", "Pozo D-129 Bis", "Lajas Verdes", "3er Mulichincho"]
 STIMULATIONS = ["none", "acidizing", "small_frac"]
 
 CATEGORICAL = {"basin": BASINS, "formation": FORMATIONS, "stimulation_type": STIMULATIONS}
@@ -19,13 +19,17 @@ NUMERIC_RANGES = {  # campo -> (min, max)
     "proppant_tonnes": (0, 500),
     "acid_volume_m3": (0, 50),
     "wti_price_usd": (20, 200),
+    "opex_loe_usd_bbl": (0, 30),   # costos operativos opcionales (USD/bbl)
+    "opex_gpt_usd_bbl": (0, 15),
+    "opex_gna_usd_bbl": (0, 10),
 }
-DEFAULTS = {"water_saturation_pct": 30, "proppant_tonnes": 0, "acid_volume_m3": 0}
+DEFAULTS = {"water_saturation_pct": 30, "proppant_tonnes": 0, "acid_volume_m3": 0,
+            "opex_loe_usd_bbl": 6.00, "opex_gpt_usd_bbl": 2.50, "opex_gna_usd_bbl": 1.50}
 REQUIRED = ["basin", "formation", "depth_m", "net_pay_m", "porosity_pct", "permeability_md",
             "skin_factor", "stimulation_type", "wti_price_usd"]
 FIELD_ORDER = ["well_id", "basin", "formation", "depth_m", "net_pay_m", "porosity_pct", "permeability_md",
                "water_saturation_pct", "skin_factor", "stimulation_type", "proppant_tonnes",
-               "acid_volume_m3", "wti_price_usd"]
+               "acid_volume_m3", "wti_price_usd", "opex_loe_usd_bbl", "opex_gpt_usd_bbl", "opex_gna_usd_bbl"]
 
 
 def _is_missing(v) -> bool:

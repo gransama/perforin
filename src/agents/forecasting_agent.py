@@ -22,10 +22,10 @@ Z = 1.28                 # z para P10/P90
 W_MODEL, W_ANALOG = 0.6, 0.4
 EUR_FLOOR = 0.01
 BASIN_ARPS = {  # basin -> (Di mensual, b)
-    "Permian": (0.07, 0.65),
-    "Eagle Ford": (0.085, 0.75),
-    "Delaware": (0.08, 0.85),
-    "Midland": (0.07, 0.60),
+    "Neuquién": (0.07, 0.65),
+    "Golfo DanielSan": (0.085, 0.75),
+    "Cuyo Cuyo": (0.08, 0.85),
+    "Astral": (0.07, 0.60),
 }
 REQUIRED = ["basin", "depth_m", "net_pay_m", "porosity_pct", "permeability_md",
             "water_saturation_pct", "skin_factor", "proppant_tonnes"]

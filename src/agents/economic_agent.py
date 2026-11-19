@@ -46,14 +46,14 @@ def estimate_capex(well: dict) -> dict:
     return out
 
 
-def cash_flows(rate_bbl_d: np.ndarray, price: float, capex_usd: float) -> dict:
+def cash_flows(rate_bbl_d: np.ndarray, price: float, capex_usd: float, opex_bbl: float = OPEX_PER_BOE) -> dict:
     """Flujo mensual (meses 1..N) y vector con capex en el mes 0."""
     bbl = rate_bbl_d * DAYS_PER_MONTH
     gross = bbl * price
     royalties = gross * ROYALTY
     taxes = (gross - royalties) * PROD_TAX
     net_rev = gross - royalties - taxes
-    opex = bbl * OPEX_PER_BOE
+    opex = bbl * opex_bbl
     net_cf = net_rev - opex
     return {"bbl": bbl, "gross": gross, "royalties": royalties, "taxes": taxes,
             "net_revenue": net_rev, "opex": opex, "net_cf": net_cf,
@@ -87,15 +87,15 @@ def decide(npv_usd: float, irr: float | None) -> str:
     return "CONDITIONAL"   # NPV > 0 implica IRR > 10%; aquí 10% < IRR <= 15%
 
 
-def breakeven_price(rate_bbl_d: np.ndarray, capex_usd: float) -> float:
+def breakeven_price(rate_bbl_d: np.ndarray, capex_usd: float, opex_bbl: float = OPEX_PER_BOE) -> float:
     """NPV es lineal en el precio, por lo que el breakeven (NPV10 = 0) se resuelve exacto con 2 evaluaciones."""
-    n0 = npv(cash_flows(rate_bbl_d, 0.0, capex_usd)["cf0"])
-    n1 = npv(cash_flows(rate_bbl_d, 100.0, capex_usd)["cf0"])
+    n0 = npv(cash_flows(rate_bbl_d, 0.0, capex_usd, opex_bbl)["cf0"])
+    n1 = npv(cash_flows(rate_bbl_d, 100.0, capex_usd, opex_bbl)["cf0"])
     return float(-n0 / ((n1 - n0) / 100.0))
 
 
-def _evaluate(rate: np.ndarray, price: float, capex_usd: float) -> dict:
-    cf = cash_flows(rate, price, capex_usd)
+def _evaluate(rate: np.ndarray, price: float, capex_usd: float, opex_bbl: float = OPEX_PER_BOE) -> dict:
+    cf = cash_flows(rate, price, capex_usd, opex_bbl)
     n, i = npv(cf["cf0"]), irr_pct(cf["cf0"])
     return {"cf": cf, "npv_usd": n, "irr": i, "payback": payback_months(cf["cf0"]), "decision": decide(n, i)}
 
@@ -127,14 +127,19 @@ def run(forecast_output: dict, well_data: dict) -> dict:
     capex = estimate_capex(well_data)
     capex_usd = capex["capex_total_usd_mm"] * 1e6
 
+    loe = float(well_data.get("opex_loe_usd_bbl", 6.00))
+    gpt = float(well_data.get("opex_gpt_usd_bbl", 2.50))
+    gna = float(well_data.get("opex_gna_usd_bbl", 1.50))
+    opex_bbl_in = loe + gpt + gna
+
     rate = np.asarray(forecast_output["production_p50_bbl_d"], dtype=float)
-    base = _evaluate(rate, price, capex_usd)
+    base = _evaluate(rate, price, capex_usd, opex_bbl_in)
     cf = base["cf"]
-    be = breakeven_price(rate, capex_usd)
+    be = breakeven_price(rate, capex_usd, opex_bbl_in)
 
     sensitivity = []
     for p in SENSITIVITY_PRICES:
-        e = _evaluate(rate, p, capex_usd)
+        e = _evaluate(rate, p, capex_usd, opex_bbl_in)
         sensitivity.append({"wti_usd_bbl": p, "npv10_usd_mm": round(e["npv_usd"] / 1e6, 2),
                             "irr_pct": None if e["irr"] is None else round(e["irr"], 1),
                             "payback_months": e["payback"], "decision": e["decision"]})
@@ -143,7 +148,7 @@ def run(forecast_output: dict, well_data: dict) -> dict:
     for name in ("p10", "p50", "p90"):
         key = f"production_{name}_bbl_d"
         if key in forecast_output:
-            e = _evaluate(np.asarray(forecast_output[key], dtype=float), price, capex_usd)
+            e = _evaluate(np.asarray(forecast_output[key], dtype=float), price, capex_usd, opex_bbl_in)
             scenarios[name] = {"eur_mmboe": forecast_output.get(f"eur_{name}_mmboe"),
                                "npv10_usd_mm": round(e["npv_usd"] / 1e6, 2),
                                "irr_pct": None if e["irr"] is None else round(e["irr"], 1),
@@ -162,7 +167,7 @@ def run(forecast_output: dict, well_data: dict) -> dict:
         "opex_per_bbl": round(opex_bbl, 2),                   # LOE + GPT + G&A
         "royalties_taxes_per_bbl": round(roy_tax_bbl, 2),     # lo que se lleva el dueño del terreno y el estado
         "cost_per_bbl": round(opex_bbl, 2),                   # costo de operar un barril (sin inversión)
-        "opex_breakdown_per_bbl": {"LOE": 6.00, "GPT": 2.50, "G&A": 1.50},
+        "opex_breakdown_per_bbl": {"LOE": round(loe, 2), "GPT": round(gpt, 2), "G&A": round(gna, 2)},
         "operating_margin_per_bbl": round(price - opex_bbl - roy_tax_bbl, 2),  # antes de recuperar el CAPEX
         "price_per_bbl": price,
         "margin_per_bbl": round(price - capex_bbl - opex_bbl - roy_tax_bbl, 2),

@@ -18,7 +18,7 @@ from src.agents.ingestion_agent import IngestionAgent  # noqa: E402
 # Pozo 1: fuerte (definido por el usuario)
 STAR = {
     "well_id": "DEMO-STAR",
-    "basin": "Permian", "formation": "Wolfcamp",
+    "basin": "Neuquién", "formation": "Oveja Muerta",
     "depth_m": 2500, "net_pay_m": 35, "porosity_pct": 10.0,
     "permeability_md": 0.8, "water_saturation_pct": 25,
     "skin_factor": 0, "stimulation_type": "acidizing",
@@ -28,7 +28,7 @@ STAR = {
 # completa, para dar CONDITIONAL y NO-GO con margen razonable.
 MARGINAL = {
     "well_id": "DEMO-MARGINAL",
-    "basin": "Midland", "formation": "Spraberry",
+    "basin": "Astral", "formation": "Lajas Verdes",
     "depth_m": 2800, "net_pay_m": 15, "porosity_pct": 6.5,
     "permeability_md": 0.15, "water_saturation_pct": 30,
     "skin_factor": 6, "stimulation_type": "none",
@@ -36,13 +36,13 @@ MARGINAL = {
 }
 DUD = {
     "well_id": "DEMO-DUD",
-    "basin": "Delaware", "formation": "Wolfcamp",
+    "basin": "Cuyo Cuyo", "formation": "Oveja Muerta",
     "depth_m": 3800, "net_pay_m": 10, "porosity_pct": 5.0,
     "permeability_md": 0.02, "water_saturation_pct": 40,
     "skin_factor": 12, "stimulation_type": "acidizing",
     "proppant_tonnes": 0, "acid_volume_m3": 30, "wti_price_usd": 65.0,
 }
-CASES = [("Permian Star", STAR, "GO"), ("Midland Marginal", MARGINAL, "CONDITIONAL"), ("Delaware Dud", DUD, "NO-GO")]
+CASES = [("Neuquién Star", STAR, "GO"), ("Astral Marginal", MARGINAL, "CONDITIONAL"), ("Cuyo Cuyo Dud", DUD, "NO-GO")]
 
 
 def run_chain(raw: dict) -> dict:

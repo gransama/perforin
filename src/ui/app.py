@@ -1,4 +1,4 @@
-﻿"""WellProfitAI - frontend Streamlit (pozos verticales). Ejecutar:  streamlit run src/ui/app.py"""
+"""Perforin - frontend Streamlit (pozos verticales). Ejecutar:  streamlit run src/ui/app.py"""
 import sys
 import time
 from pathlib import Path
@@ -10,7 +10,7 @@ import pandas as pd  # noqa: E402
 import plotly.graph_objects as go  # noqa: E402
 import streamlit as st  # noqa: E402
 
-st.set_page_config(page_title="WellProfitAI", layout="wide", page_icon="🛢️")
+st.set_page_config(page_title="Perforin", layout="wide", page_icon="🛢️")
 
 # ------------------------------------------------------------------ agentes reales (con fallback a mock)
 try:
@@ -24,9 +24,9 @@ except Exception as exc:  # noqa: BLE001
 
 COLORS = {"GO": "#16a34a", "CONDITIONAL": "#f59e0b", "NO-GO": "#dc2626"}
 VERDICT_TEXT = {
-    "GO": "✅ ¡A PERFORAR! — Este pozo es rentable",
-    "CONDITIONAL": "⚠️ RIESGOSO — Economía marginal, depende del precio del petróleo",
-    "NO-GO": "❌ NO PERFORAR — Este pozo pierde dinero",
+    "GO": ("Perforar", "GO · el pozo es rentable al precio actual"),
+    "CONDITIONAL": ("Riesgoso", "CONDITIONAL · economía marginal, depende del precio del petróleo"),
+    "NO-GO": ("No perforar", "NO-GO · el pozo pierde dinero a este precio"),
 }
 RISK_ES = {"low": "BAJO", "medium": "MEDIO", "high": "ALTO"}
 AGENTS = [
@@ -39,35 +39,33 @@ AGENT_NAME_ES = {"geological": "Geológico", "forecasting": "Pronóstico", "econ
 
 st.markdown("""
 <style>
-.block-container {padding-top: 1.2rem;}
-.big-title {font-size: 3.2rem; font-weight: 800; margin: 0; line-height: 1.1;}
-.subtitle {font-size: 1.6rem; margin: .2rem 0 0 0; color: #334155;}
-.small {font-size: 1rem; color: #64748b;}
-.verdict {border-radius: 18px; padding: 22px 30px; color: white; margin: 14px 0 6px 0;}
-.verdict .v {font-size: 2.8rem; font-weight: 900; line-height: 1.15;}
-.verdict .t {font-size: 1.4rem; font-weight: 500; margin-top: 6px;}
-.kpi {border-radius: 14px; padding: 16px; background: #f1f5f9; text-align: center; height: 150px;}
-.kpi .l {font-size: 1.1rem; color: #475569;}
-.kpi .n {font-size: 2.4rem; font-weight: 800; color: #0f172a;}
-.kpi .h {font-size: .95rem; color: #64748b;}
-.acard {border-radius: 14px; padding: 14px; height: 185px; border: 3px solid;}
-.acard .a {font-size: 1.3rem; font-weight: 800;} .acard .d {font-size: 1rem; color: #475569;}
-.acard .s {font-size: 1.2rem; font-weight: 700; margin-top: 8px;}
+.block-container {padding-top: 2rem; max-width: 1100px;}
+header[data-testid="stHeader"] {background: transparent;}
+.brand {font-size: 1.5rem; font-weight: 700; letter-spacing: -.02em; margin: 0;}
+.tag {color: #78716c; font-size: .9rem; margin: 0 0 .5rem 0;}
+.well {color: #78716c; font-size: .9rem; margin-bottom: 4px;}
+.verdict {display: flex; align-items: baseline; gap: 16px; padding-bottom: 20px; border-bottom: 1px solid #e7e5e4;}
+.verdict .v {font-size: 2.8rem; font-weight: 700; letter-spacing: -.03em; line-height: 1.1;}
+.verdict .t {color: #78716c;}
+.kpis {display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid #e7e5e4; margin-bottom: 8px;}
+.kpi {padding: 18px 0;}
+.kpi + .kpi {padding-left: 24px; border-left: 1px solid #e7e5e4;}
+.kpi .l {font-size: .75rem; color: #78716c; text-transform: uppercase; letter-spacing: .06em;}
+.kpi .n {font-size: 1.8rem; font-weight: 600; letter-spacing: -.02em; color: #1c1917;}
+.kpi .h {font-size: .8rem; color: #78716c;}
+.sec {font-size: .75rem; color: #78716c; text-transform: uppercase; letter-spacing: .06em; margin: 18px 0 8px 0;}
+.agents {display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: .8rem; color: #78716c; margin-top: 8px;}
+.dot {width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 5px;}
 </style>
 """, unsafe_allow_html=True)
-
 # ------------------------------------------------------------------ banner
-st.markdown("<p class='big-title'>🛢️ WellProfitAI</p>", unsafe_allow_html=True)
-st.markdown("<p class='subtitle'>¿Deberíamos perforar este pozo? Predicción de rentabilidad con IA</p>",
-            unsafe_allow_html=True)
-st.markdown("<p class='small'>Impulsado por 4 Agentes de IA | Análisis de Pozo Vertical</p>", unsafe_allow_html=True)
-
+st.markdown("<p class='brand'>Perforin</p><p class='tag'>¿Conviene perforar este pozo?</p>", unsafe_allow_html=True)
 # ------------------------------------------------------------------ sidebar
 with st.sidebar:
     st.title("📋 Nuevo Pozo Propuesto")
-    basin = st.selectbox("Cuenca", ["Permian", "Eagle Ford", "Delaware", "Midland"], index=0,
+    basin = st.selectbox("Cuenca", ["Neuquién", "Golfo DanielSan", "Cuyo Cuyo", "Astral"], index=0,
                          help="Zona geográfica donde se perforaría el pozo")
-    formation = st.selectbox("Formación", ["Wolfcamp", "Bone Spring", "Eagle Ford Shale", "Spraberry", "3rd Bone Spring"],
+    formation = st.selectbox("Formación", ["Oveja Muerta", "Mulichincho", "Pozo D-129 Bis", "Lajas Verdes", "3er Mulichincho"],
                              index=0, help="La capa de roca específica donde está el petróleo")
     depth = st.slider("Profundidad (m)", 1000, 4500, 2800, 100, help="A cuántos metros de profundidad hay que perforar")
     net_pay = st.slider("Espesor Neto (m)", 5, 50, 25, 1,
@@ -91,6 +89,17 @@ with st.sidebar:
                              help="Arena que se inyecta para mantener abiertas las fracturas y que el petróleo fluya")
     wti = st.slider("Precio WTI (USD/barril)", 20, 120, 65, 1,
                     help="Precio actual del petróleo en USD por barril (WTI = referencia internacional)")
+    st.markdown("<p class='sec'>Costos operativos (USD por barril)</p>", unsafe_allow_html=True)
+    opex_loe = st.slider("Extracción (LOE)", 0.0, 30.0, 6.0, 0.25,
+                         help="Costo de levantar el petróleo: energía, personal de campo, mantenimiento de pozos")
+    opex_gpt = st.slider("Transporte y procesamiento", 0.0, 15.0, 2.5, 0.25,
+                         help="Costo de llevar el crudo hasta la planta o el oleoducto y tratarlo")
+    opex_gna = st.slider("Administración (G&A)", 0.0, 10.0, 1.5, 0.25,
+                         help="Gastos generales y de administración asignados al pozo")
+    st.caption(f"Costo total de operar: USD {opex_loe + opex_gpt + opex_gna:.2f} por barril")
+    st.markdown("<p class='sec'>Unidades</p>", unsafe_allow_html=True)
+    unit = st.radio("Volumen de petróleo", ["Barriles", "Metros cúbicos"], horizontal=True,
+                    help="En Argentina la producción se informa en m³ y en barriles. 1 barril = 0,159 m³")
     st.divider()
     simulate_fail = st.multiselect("Simular falla de un agente (demo del respaldo)",
                                    ["geological", "forecasting", "economic"],
@@ -102,7 +111,25 @@ with st.sidebar:
 raw_input = {"basin": basin, "formation": formation, "depth_m": depth, "net_pay_m": net_pay,
              "porosity_pct": porosity, "permeability_md": perm, "water_saturation_pct": 30,
              "skin_factor": skin, "stimulation_type": stim, "proppant_tonnes": proppant,
-             "acid_volume_m3": acid, "wti_price_usd": wti}
+             "acid_volume_m3": acid, "wti_price_usd": wti, "opex_loe_usd_bbl": opex_loe,
+             "opex_gpt_usd_bbl": opex_gpt, "opex_gna_usd_bbl": opex_gna}
+
+# ------------------------------------------------------------------ unidades (los agentes trabajan en bbl y MMBOE)
+M3_PER_BBL = 0.158987
+USE_M3 = unit == "Metros cúbicos"
+VOL_UNIT = "mil m³" if USE_M3 else "mil bbl"
+RATE_UNIT = "m³/día" if USE_M3 else "bbl/día"
+
+
+def vol(mmboe):
+    """Millones de barriles (interno) -> miles de barriles o de m³, texto listo para mostrar."""
+    v = mmboe * 1000 * (M3_PER_BBL if USE_M3 else 1.0)
+    return f"{v:,.0f}" if v >= 100 else f"{v:,.1f}"
+
+
+def rate_of(bbl_d):
+    return bbl_d * (M3_PER_BBL if USE_M3 else 1.0)
+
 
 if not run_btn and "result" not in st.session_state:
     st.info("👈 Configurá los parámetros del pozo y hacé clic en Evaluar")
@@ -114,8 +141,8 @@ def mock_geo(w):
     return {"well_id": w.get("well_id", "MOCK"), "reservoir_score": 62.0, "risk_level": "medium",
             "porosity_score": 45.0, "permeability_score": 65.0, "net_pay_score": 55.0, "skin_score": 80.0,
             "depth_score": 100.0,
-            "analog_wells": [{"well_id": f"VW-{i:03d}", "well_name": f"MOCK-{i}", "basin": w.get("basin", "Permian"),
-                              "formation": w.get("formation", "Wolfcamp"), "eur_mmboe": e, "distance": 0.1 + 0.03 * i}
+            "analog_wells": [{"well_id": f"VW-{i:03d}", "well_name": f"MOCK-{i}", "basin": w.get("basin", "Neuquién"),
+                              "formation": w.get("formation", "Oveja Muerta"), "eur_mmboe": e, "distance": 0.1 + 0.03 * i}
                              for i, e in enumerate([0.30, 0.35, 0.38, 0.42, 0.50], start=1)],
             "analog_eur_stats": {"mean": 0.39, "p10": 0.32, "p50": 0.38, "p90": 0.47}}
 
@@ -181,7 +208,7 @@ def recomendacion(eco, fc, w):
     margen = "margen" if price >= be else "faltante"
     return (f"{head} Con WTI a USD {price:.2f}/barril y una inversión (CAPEX) de USD "
             f"{eco['capex_breakdown_usd_mm']['capex_total_usd_mm']:.2f} MM, este pozo de {w['basin']} "
-            f"(recuperación esperada P50: {fc['eur_p50_mmboe']:.2f} MMBOE) tiene un VAN10 de USD {eco['npv10_usd_mm']:.2f} MM, "
+            f"(recuperación esperada P50: {vol(fc['eur_p50_mmboe'])} {VOL_UNIT}) tiene un VAN10 de USD {eco['npv10_usd_mm']:.2f} MM, "
             f"TIR {irr} y {pb_txt}. El precio de equilibrio es USD {be:.2f}/barril, así que el {margen} "
             f"es de USD {abs(price - be):.2f}/barril.")
 
@@ -225,24 +252,38 @@ def run_pipeline(raw, on_status):
 
 
 def card_html(label, desc, state, info):
-    color, text = {"pending": ("#94a3b8", "⏳ En espera"), "running": ("#2563eb", "⚙️ Trabajando..."),
-                   "done": ("#16a34a", "✅ Listo"), "mock": ("#f59e0b", "⚠️ Datos de respaldo")}[state]
+    color, text = {"pending": ("#a8a29e", "en espera"), "running": ("#1c1917", "trabajando..."),
+                   "done": ("#15803d", "listo"), "mock": ("#b45309", "datos de respaldo")}[state]
     secs = f" · {info['seconds']} s" if info else ""
-    return (f"<div class='acard' style='border-color:{color}'><div class='a'>{label}</div>"
-            f"<div class='d'>{desc}</div><div class='s' style='color:{color}'>{text}{secs}</div></div>")
-
+    return (f"<div class='kpi' style='padding-left:0;border-left:0'><div class='l'>{label}</div>"
+            f"<div class='h'>{desc}</div><div class='h' style='color:{color}'><span class='dot' "
+            f"style='background:{color}'></span>{text}{secs}</div></div>")
 
 def kpi(label, value, hint=""):
     return f"<div class='kpi'><div class='l'>{label}</div><div class='n'>{value}</div><div class='h'>{hint}</div></div>"
 
 
+def kpi_row(items):
+    return "<div class='kpis'>" + "".join(kpi(*i) for i in items) + "</div>"
+
+
+def sec(text):
+    st.markdown(f"<p class='sec'>{text}</p>", unsafe_allow_html=True)
+
+
+def style(fig, h=380):
+    fig.update_layout(height=h, font=dict(size=13, color="#1c1917"), plot_bgcolor="white", paper_bgcolor="white",
+                      margin=dict(t=30, b=10, l=10, r=10), legend=dict(orientation="h", y=-0.2))
+    fig.update_xaxes(showgrid=False, linecolor="#e7e5e4")
+    fig.update_yaxes(gridcolor="#f5f5f4", zeroline=False)
+    return fig
+
 # ------------------------------------------------------------------ layout: veredicto + tabs
 verdict_box = st.container()
-tab_geo, tab_fc, tab_eco, tab_pipe = st.tabs(
-    ["🪨 Análisis Geológico", "📈 Pronóstico de Producción", "💵 Análisis Económico", "🤖 Pipeline de Agentes"])
+tab_sum, tab_geo, tab_fc, tab_eco, tab_pipe = st.tabs(["Resumen", "Geología", "Producción", "Economía", "Agentes"])
 
 with tab_pipe:
-    st.subheader("4 agentes de IA trabajando uno tras otro")
+    sec("Cuatro agentes, uno tras otro")
     cols = st.columns(4)
     slots = [c.empty() for c in cols]
 
@@ -267,153 +308,165 @@ else:
 
 if not res["ok"]:
     with verdict_box:
-        st.error("### Corregí los datos del pozo\n\n" + res["error"])
+        st.error("Corregí los datos del pozo\n\n" + res["error"])
     st.stop()
 
 well, geo, fc, eco = res["well"], res["geo"], res["fc"], res["eco"]
 dec = eco["decision"]
+irr, pb = eco["irr_pct"], eco["payback_months"]
+capex = eco["capex_breakdown_usd_mm"]["capex_total_usd_mm"]
 
 with verdict_box:
-    st.markdown(f"<div class='verdict' style='background:{COLORS[dec]}'>"
-                f"<div class='v'>{VERDICT_TEXT[dec]}</div><div class='t'>Decisión del sistema: {dec}</div></div>",
-                unsafe_allow_html=True)
+    vtitle, vsub = VERDICT_TEXT[dec]
+    st.markdown(f"<div class='well'>{well['basin']} · {well['formation']} · {well['depth_m']:,.0f} m</div>"
+                f"<div class='verdict'><div class='v' style='color:{COLORS[dec]}'>{vtitle}</div>"
+                f"<div class='t'>{vsub}</div></div>", unsafe_allow_html=True)
+    st.markdown(kpi_row([
+        ("VAN10", f"USD {eco['npv10_usd_mm']:.1f} MM", "ganancia neta descontada al 10%"),
+        ("TIR", "n/d" if irr is None else f"{irr:.0f} %", "retorno anual"),
+        ("Repago", "nunca" if pb is None else f"{pb} meses", "para recuperar la inversión"),
+        ("Break-even", f"USD {eco['breakeven_wti_usd']:.0f} / bbl", "precio mínimo para no perder"),
+    ]), unsafe_allow_html=True)
     if res["any_mock"]:
-        st.warning("⚠️ Uno o más agentes fallaron, así que se muestran datos de respaldo (mock) para ellos. "
-                   "Mirá la pestaña Pipeline de Agentes.")
+        st.warning("Uno o más agentes fallaron y se muestran datos de respaldo (mock). Mirá la pestaña Agentes.")
 
-# ------------------------------------------------------------------ tab 1: geología
+# ------------------------------------------------------------------ tab: resumen
+with tab_sum:
+    c1, c2 = st.columns([1.4, 1], gap="large")
+    with c1:
+        sec("Flujo de caja acumulado (USD MM)")
+        cum = eco["cumulative_cash_flow_usd_mm"]
+        fcum = go.Figure(go.Scatter(x=np.arange(len(cum)) / 12, y=cum, line=dict(color="#1c1917", width=2)))
+        fcum.add_hline(y=0, line_color="#e7e5e4")
+        if pb is not None and pb < len(cum):
+            fcum.add_trace(go.Scatter(x=[pb / 12], y=[cum[pb]], mode="markers+text", text=[f"repago · mes {pb}"],
+                                      textposition="top right", marker=dict(color=COLORS[dec], size=9)))
+        fcum.update_layout(showlegend=False, xaxis_title="Años")
+        st.plotly_chart(style(fcum, 300), width="stretch")
+        st.caption(recomendacion(eco, fc, well))
+    with c2:
+        sec(f"Calidad de roca · {geo['reservoir_score']:.0f} / 100 · riesgo {RISK_ES[geo['risk_level']].lower()}")
+        for nm, v in [("Porosidad", geo["porosity_score"]), ("Permeabilidad", geo["permeability_score"]),
+                      ("Espesor neto", geo["net_pay_score"]), ("Daño (skin)", geo["skin_score"]),
+                      ("Profundidad", geo["depth_score"])]:
+            st.markdown(f"<div style='display:grid;grid-template-columns:110px 1fr 30px;gap:10px;align-items:center;"
+                        f"font-size:.85rem;margin:8px 0'><span>{nm}</span><span style='height:6px;background:#e7e5e4;"
+                        f"border-radius:3px;display:block'><span style='display:block;height:6px;width:{v:.0f}%;"
+                        f"background:#1c1917;border-radius:3px'></span></span><b>{v:.0f}</b></div>",
+                        unsafe_allow_html=True)
+
+# ------------------------------------------------------------------ tab: geología
 with tab_geo:
     score, risk = geo["reservoir_score"], geo["risk_level"]
-    rcolor = {"low": "#16a34a", "medium": "#f59e0b", "high": "#dc2626"}[risk]
-    c1, c2 = st.columns([1, 1.6])
+    rcolor = {"low": "#15803d", "medium": "#b45309", "high": "#b91c1c"}[risk]
+    c1, c2 = st.columns([1, 1.6], gap="large")
     with c1:
+        sec("Puntaje de calidad de roca")
         fig = go.Figure(go.Indicator(
-            mode="gauge+number", value=score, number={"font": {"size": 64}},
-            title={"text": "Puntaje de Calidad de Roca", "font": {"size": 26}},
-            gauge={"axis": {"range": [0, 100]}, "bar": {"color": rcolor, "thickness": 0.35},
-                   "steps": [{"range": [0, 40], "color": "#fecaca"}, {"range": [40, 70], "color": "#fde68a"},
-                             {"range": [70, 100], "color": "#bbf7d0"}]}))
-        fig.update_layout(height=340, margin=dict(t=70, b=10, l=20, r=20))
-        st.plotly_chart(fig, width="stretch")
-        st.markdown(f"<h2 style='text-align:center;color:{rcolor}'>Riesgo: {RISK_ES[risk]}</h2>", unsafe_allow_html=True)
+            mode="gauge+number", value=score, number={"font": {"size": 52}},
+            gauge={"axis": {"range": [0, 100]}, "bar": {"color": rcolor, "thickness": 0.3},
+                   "steps": [{"range": [0, 40], "color": "#f5f5f4"}, {"range": [40, 70], "color": "#e7e5e4"},
+                             {"range": [70, 100], "color": "#d6d3d1"}]}))
+        st.plotly_chart(style(fig, 260), width="stretch")
+        st.markdown(f"<p style='text-align:center;color:{rcolor};font-weight:600'>Riesgo {RISK_ES[risk].lower()}</p>",
+                    unsafe_allow_html=True)
     with c2:
-        st.markdown("### Cómo se arma el puntaje")
+        sec("Cómo se arma el puntaje")
         parts = [("Porosidad (25%)", geo["porosity_score"]), ("Permeabilidad (25%)", geo["permeability_score"]),
                  ("Espesor neto (25%)", geo["net_pay_score"]), ("Daño / Skin (15%)", geo["skin_score"]),
-                 ("Ajuste de profundidad (10%)", geo["depth_score"])]
+                 ("Profundidad (10%)", geo["depth_score"])]
         fb = go.Figure(go.Bar(x=[p[1] for p in parts], y=[p[0] for p in parts], orientation="h",
-                              text=[f"{p[1]:.0f}" for p in parts], textposition="outside",
-                              marker_color="#2563eb"))
-        fb.update_layout(height=300, xaxis=dict(range=[0, 115], title="Puntaje (0-100)"),
-                         yaxis=dict(autorange="reversed"), margin=dict(t=10), font=dict(size=16))
-        st.plotly_chart(fb, width="stretch")
-    st.markdown("### 🔎 Los 5 pozos más parecidos que ya perforamos")
+                              text=[f"{p[1]:.0f}" for p in parts], textposition="outside", marker_color="#1c1917"))
+        fb.update_layout(xaxis=dict(range=[0, 115]), yaxis=dict(autorange="reversed"))
+        st.plotly_chart(style(fb, 280), width="stretch")
+    sec("Los 5 pozos más parecidos que ya perforamos")
     a = pd.DataFrame(geo["analog_wells"])[["well_name", "basin", "formation", "eur_mmboe", "distance"]]
-    a.columns = ["Pozo", "Cuenca", "Formación", "Petróleo recuperado (MMBOE)", "Diferencia (0 = idéntico)"]
+    a["eur_mmboe"] = a["eur_mmboe"].map(vol)
+    a.columns = ["Pozo", "Cuenca", "Formación", f"Recuperación total ({VOL_UNIT})", "Diferencia (0 = idéntico)"]
     st.dataframe(a, hide_index=True, width="stretch")
     s = geo["analog_eur_stats"]
-    m1, m2, m3 = st.columns(3)
-    m1.markdown(kpi("Pozos similares: caso bajo", f"{s['p10']:.2f}", "MMBOE (P10)"), unsafe_allow_html=True)
-    m2.markdown(kpi("Pozos similares: caso típico", f"{s['p50']:.2f}", "MMBOE (P50)"), unsafe_allow_html=True)
-    m3.markdown(kpi("Pozos similares: caso alto", f"{s['p90']:.2f}", "MMBOE (P90)"), unsafe_allow_html=True)
+    st.markdown(kpi_row([("Caso bajo (P10)", vol(s["p10"]), VOL_UNIT), ("Caso típico (P50)", vol(s["p50"]), VOL_UNIT),
+                         ("Caso alto (P90)", vol(s["p90"]), VOL_UNIT), ("Promedio", vol(s["mean"]), VOL_UNIT)]),
+                unsafe_allow_html=True)
 
-# ------------------------------------------------------------------ tab 2: forecast
+# ------------------------------------------------------------------ tab: producción
 with tab_fc:
-    k1, k2, k3, k4 = st.columns(4)
-    k1.markdown(kpi("Pesimista (P10)", f"{fc['eur_p10_mmboe']:.2f}", "MMBOE en 30 años"), unsafe_allow_html=True)
-    k2.markdown(kpi("Esperado (P50)", f"{fc['eur_p50_mmboe']:.2f}", "MMBOE en 30 años"), unsafe_allow_html=True)
-    k3.markdown(kpi("Optimista (P90)", f"{fc['eur_p90_mmboe']:.2f}", "MMBOE en 30 años"), unsafe_allow_html=True)
-    k4.markdown(kpi("Producción inicial", f"{fc['ip_bbl_d']:.0f}", "barriles por día"), unsafe_allow_html=True)
+    st.markdown(kpi_row([("Pesimista (P10)", vol(fc["eur_p10_mmboe"]), f"{VOL_UNIT} en 30 años"),
+                         ("Esperado (P50)", vol(fc["eur_p50_mmboe"]), f"{VOL_UNIT} en 30 años"),
+                         ("Optimista (P90)", vol(fc["eur_p90_mmboe"]), f"{VOL_UNIT} en 30 años"),
+                         ("Producción inicial", f"{rate_of(fc['ip_bbl_d']):,.0f}", RATE_UNIT)]), unsafe_allow_html=True)
+    sec(f"Producción diaria durante 30 años ({RATE_UNIT})")
     yrs = np.array(fc["months"]) / 12
     f2 = go.Figure()
-    f2.add_trace(go.Scatter(x=yrs, y=fc["production_p10_bbl_d"], name="Pesimista (P10)",
-                            line=dict(color="#dc2626", dash="dot", width=3)))
-    f2.add_trace(go.Scatter(x=yrs, y=fc["production_p90_bbl_d"], name="Optimista (P90)",
-                            line=dict(color="#16a34a", dash="dot", width=3), fill="tonexty",
-                            fillcolor="rgba(100,116,139,.15)"))
-    f2.add_trace(go.Scatter(x=yrs, y=fc["production_p50_bbl_d"], name="Esperado (P50)",
-                            line=dict(color="#2563eb", width=5)))
-    f2.update_layout(title=dict(text="Cuánto petróleo por día, durante 30 años", font=dict(size=24)),
-                     xaxis_title="Años", yaxis_title="Barriles por día", height=480, font=dict(size=16),
-                     legend=dict(orientation="h", y=1.1))
-    st.plotly_chart(f2, width="stretch")
-    st.caption("Los pozos producen mucho al principio y después declinan año tras año. La franja sombreada es el "
-               f"rango de incertidumbre. Confianza del modelo: {fc['model_confidence'] * 100:.0f}%.")
+    f2.add_trace(go.Scatter(x=yrs, y=rate_of(np.array(fc["production_p10_bbl_d"])), name="Pesimista (P10)",
+                            line=dict(color="#a8a29e", dash="dot", width=1.5)))
+    f2.add_trace(go.Scatter(x=yrs, y=rate_of(np.array(fc["production_p90_bbl_d"])), name="Optimista (P90)",
+                            line=dict(color="#a8a29e", dash="dot", width=1.5), fill="tonexty",
+                            fillcolor="rgba(168,162,158,.15)"))
+    f2.add_trace(go.Scatter(x=yrs, y=rate_of(np.array(fc["production_p50_bbl_d"])), name="Esperado (P50)",
+                            line=dict(color="#1c1917", width=2.5)))
+    f2.update_layout(xaxis_title="Años", yaxis_title=RATE_UNIT)
+    st.plotly_chart(style(f2, 420), width="stretch")
+    st.caption("Los pozos producen mucho al principio y después declinan. La franja es el rango de incertidumbre. "
+               f"Confianza del modelo: {fc['model_confidence'] * 100:.0f}%.")
 
-# ------------------------------------------------------------------ tab 3: economía
+# ------------------------------------------------------------------ tab: economía
 with tab_eco:
-    irr = eco["irr_pct"]
-    pb = eco["payback_months"]
-    capex = eco["capex_breakdown_usd_mm"]["capex_total_usd_mm"]
-    k = st.columns(5)
-    k[0].markdown(kpi("💰 Ganancia Neta (VAN)", f"${eco['npv10_usd_mm']:.1f}M", "USD, descontado al 10%"), unsafe_allow_html=True)
-    k[1].markdown(kpi("📈 Retorno (TIR)", "n/d" if irr is None else f"{irr:.0f}%", "como una tasa de interés anual"), unsafe_allow_html=True)
-    k[2].markdown(kpi("⏱️ Recupero de Inversión", "nunca" if pb is None else f"{pb} meses", "tiempo para recuperar el costo"), unsafe_allow_html=True)
-    k[3].markdown(kpi("🛢️ Precio de Equilibrio", f"${eco['breakeven_wti_usd']:.0f}", "USD/barril para no perder"), unsafe_allow_html=True)
-    k[4].markdown(kpi("💵 Costo de Perforación", f"${capex:.1f}M", "USD, inversión total (CAPEX)"), unsafe_allow_html=True)
-    st.info(recomendacion(eco, fc, well))
+    st.markdown(kpi_row([("VAN10", f"USD {eco['npv10_usd_mm']:.1f} MM", "descontado al 10%"),
+                         ("TIR", "n/d" if irr is None else f"{irr:.0f} %", "retorno anual"),
+                         ("Repago", "nunca" if pb is None else f"{pb} meses", "recupero de inversión"),
+                         ("CAPEX", f"USD {capex:.1f} MM", "inversión total")]), unsafe_allow_html=True)
+    st.markdown(recomendacion(eco, fc, well))
 
-    # ---- costo de operar un barril
     u = eco["unit_economics_usd_bbl"]
-    st.markdown("### 🛢️ ¿Cuánto nos cuesta operar un barril?")
-    ucol, uchart = st.columns([1, 1.6])
+    bd = u["opex_breakdown_per_bbl"]
+    mcolor = "#15803d" if u["operating_margin_per_bbl"] > 0 else "#b91c1c"
+    sec("Cuánto cuesta operar un barril")
+    ucol, uchart = st.columns([1, 1.6], gap="large")
     with ucol:
-        bd = u["opex_breakdown_per_bbl"]
-        mcolor = "#16a34a" if u["operating_margin_per_bbl"] > 0 else "#dc2626"
-        st.markdown(kpi("Nos cuesta operar un barril", f"${u['cost_per_bbl']:.2f}",
-                        f"extracción ${bd['LOE']:.2f} + transporte ${bd['GPT']:.2f} + administración ${bd['G&A']:.2f}"),
+        st.markdown(kpi("Costo de operar", f"USD {u['cost_per_bbl']:.2f} / bbl",
+                        f"Extracción {bd['LOE']:.2f}<br>Transporte {bd['GPT']:.2f}<br>Administración {bd['G&A']:.2f}")
+                    + kpi("Precio de venta (WTI)", f"USD {u['price_per_bbl']:.2f} / bbl", "por barril")
+                    + f"<div class='kpi'><div class='l'>Margen por barril</div><div class='n' style='color:{mcolor}'>"
+                      f"USD {u['operating_margin_per_bbl']:.2f} / bbl</div><div class='h'>tras operar, regalías e impuestos</div></div>",
                     unsafe_allow_html=True)
-        st.markdown(kpi("Precio de venta (WTI)", f"${u['price_per_bbl']:.2f}", "USD por barril"), unsafe_allow_html=True)
-        st.markdown(f"<div class='kpi'><div class='l'>Margen por barril</div>"
-                    f"<div class='n' style='color:{mcolor}'>${u['operating_margin_per_bbl']:.2f}</div>"
-                    f"<div class='h'>después de operar, regalías e impuestos</div></div>", unsafe_allow_html=True)
     with uchart:
         fu = go.Figure()
-        parts_u = [("Extracción (LOE)", bd["LOE"], "#6366f1"), ("Transporte (GPT)", bd["GPT"], "#8b5cf6"),
-                   ("Administración (G&A)", bd["G&A"], "#a78bfa"),
-                   ("Regalías e impuestos", u["royalties_taxes_per_bbl"], "#94a3b8"),
-                   ("Margen", u["operating_margin_per_bbl"], "#16a34a" if u["operating_margin_per_bbl"] > 0 else "#dc2626")]
+        parts_u = [("Extracción (LOE)", bd["LOE"], "#44403c"), ("Transporte (GPT)", bd["GPT"], "#78716c"),
+                   ("Administración (G&A)", bd["G&A"], "#a8a29e"),
+                   ("Regalías e impuestos", u["royalties_taxes_per_bbl"], "#d6d3d1"),
+                   ("Margen", u["operating_margin_per_bbl"], mcolor)]
         for nm, val, col in parts_u:
-            fu.add_trace(go.Bar(name=nm, x=["Adónde va cada barril vendido"], y=[val], text=[f"${val:.2f}"],
+            fu.add_trace(go.Bar(name=nm, x=["Cada barril vendido"], y=[val], text=[f"{val:.2f}"],
                                 textposition="inside", marker_color=col))
-        fu.update_layout(barmode="relative", height=380, font=dict(size=15), yaxis_title="USD por barril",
-                         title=dict(text=f"De cada barril vendido a ${u['price_per_bbl']:.0f}", font=dict(size=22)),
-                         legend=dict(orientation="h", y=-0.2))
-        st.plotly_chart(fu, width="stretch")
-    st.caption("Costo de operar = gastos operativos (LOE + transporte y procesamiento + administración) = USD 10 por barril. "
-               "No incluye la inversión inicial (CAPEX), que se muestra en el gráfico de abajo. "
+        fu.update_layout(barmode="relative", yaxis_title="USD por barril")
+        st.plotly_chart(style(fu, 360), width="stretch")
+    st.caption("Costo de operar = LOE + transporte y procesamiento + administración. No incluye el CAPEX. "
                "Regalías (25%) e impuestos (7.5%) se pagan sobre la venta.")
 
-    c1, c2 = st.columns(2)
+    c1, c2 = st.columns(2, gap="large")
     with c1:
+        sec("Si cambia el precio del petróleo (VAN10, USD MM)")
         sens = pd.DataFrame(eco["sensitivity"])
         fs = go.Figure(go.Bar(x=sens["wti_usd_bbl"].astype(str), y=sens["npv10_usd_mm"],
-                              marker_color=[COLORS.get(d, "#64748b") for d in sens["decision"]],
-                              text=[f"${v:.1f}M" for v in sens["npv10_usd_mm"]], textposition="outside"))
-        fs.update_layout(title=dict(text="¿Y si cambia el precio del petróleo?", font=dict(size=22)),
-                         xaxis_title="Precio del petróleo (USD/barril)",
-                         yaxis_title="Ganancia neta, VAN10 (millones de USD)", height=430, font=dict(size=15))
-        st.plotly_chart(fs, width="stretch")
+                              marker_color=[COLORS.get(d, "#78716c") for d in sens["decision"]],
+                              text=[f"{v:.1f}" for v in sens["npv10_usd_mm"]], textposition="outside"))
+        fs.update_layout(xaxis_title="WTI (USD/barril)", showlegend=False)
+        st.plotly_chart(style(fs, 380), width="stretch")
     with c2:
+        sec("Adónde va la inversión (USD MM)")
         names = {"capex_predrill_usd_mm": "Pre-perforación", "capex_drilling_usd_mm": "Perforación",
                  "capex_completion_usd_mm": "Completación", "capex_facilities_usd_mm": "Facilidades",
                  "capex_lift_usd_mm": "Levantamiento artificial", "capex_contingency_usd_mm": "Contingencia"}
         vals = [eco["capex_breakdown_usd_mm"][k_] for k_ in names]
         fc2 = go.Figure(go.Bar(x=vals, y=list(names.values()), orientation="h",
-                               text=[f"${v:.2f}M" for v in vals], textposition="outside", marker_color="#0ea5e9"))
-        fc2.update_layout(title=dict(text="Adónde va la plata (millones de USD)", font=dict(size=22)),
-                          yaxis=dict(autorange="reversed"), xaxis=dict(range=[0, max(vals) * 1.3]),
-                          height=430, font=dict(size=15))
-        st.plotly_chart(fc2, width="stretch")
-    cum = eco["cumulative_cash_flow_usd_mm"]
-    fcum = go.Figure(go.Scatter(x=np.arange(len(cum)) / 12, y=cum, fill="tozeroy", line=dict(color="#2563eb", width=3)))
-    fcum.add_hline(y=0, line_dash="dash")
-    fcum.update_layout(title=dict(text="Dinero acumulado a lo largo del tiempo (millones de USD)", font=dict(size=22)),
-                       xaxis_title="Años", height=330, font=dict(size=15))
-    st.plotly_chart(fcum, width="stretch")
+                               text=[f"{v:.2f}" for v in vals], textposition="outside", marker_color="#1c1917"))
+        fc2.update_layout(yaxis=dict(autorange="reversed"), xaxis=dict(range=[0, max(vals) * 1.3]))
+        st.plotly_chart(style(fc2, 380), width="stretch")
 
-# ------------------------------------------------------------------ tab 4: detalle del pipeline
+# ------------------------------------------------------------------ tab: agentes (detalle)
 with tab_pipe:
+    sec("Estado y salidas")
     rows = [{"Agente": lbl, "Estado": "Datos de respaldo" if res["status"][k]["mock"] else "OK",
              "Segundos": res["status"][k]["seconds"], "Error": res["status"][k]["error"] or ""}
             for k, lbl, _ in AGENTS]

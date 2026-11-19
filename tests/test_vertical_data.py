@@ -10,7 +10,7 @@ NEW = dict(depth_m=2900, net_pay_m=18, porosity_pct=8, permeability_md=0.3, skin
 
 def test_wells_ranges():
     assert len(W) == 200 and W.well_id.is_unique
-    assert W.basin.value_counts().to_dict() == {"Permian": 80, "Eagle Ford": 50, "Delaware": 40, "Midland": 30}
+    assert W.basin.value_counts().to_dict() == {"Neuquién": 80, "Golfo DanielSan": 50, "Cuyo Cuyo": 40, "Astral": 30}
     assert W.depth_m.between(1000, 4500).all() and W.net_pay_m.between(5, 50).all()
     assert W.porosity_pct.between(3, 15).all() and W.permeability_md.between(0.001, 10).all()
     assert W.water_saturation_pct.between(20, 55).all() and W.skin_factor.between(-2, 20).all()
@@ -21,9 +21,9 @@ def test_wells_ranges():
 
 
 def test_basin_specific_ranges():
-    depth = {"Permian": (1500, 3500), "Eagle Ford": (1200, 3200), "Delaware": (1800, 4200), "Midland": (1200, 3000)}
-    di = {"Permian": (0.04, 0.10), "Eagle Ford": (0.05, 0.12), "Delaware": (0.05, 0.11), "Midland": (0.04, 0.10)}
-    b = {"Permian": (0.3, 1.0), "Eagle Ford": (0.4, 1.1), "Delaware": (0.5, 1.2), "Midland": (0.3, 0.9)}
+    depth = {"Neuquién": (1500, 3500), "Golfo DanielSan": (1200, 3200), "Cuyo Cuyo": (1800, 4200), "Astral": (1200, 3000)}
+    di = {"Neuquién": (0.04, 0.10), "Golfo DanielSan": (0.05, 0.12), "Cuyo Cuyo": (0.05, 0.11), "Astral": (0.04, 0.10)}
+    b = {"Neuquién": (0.3, 1.0), "Golfo DanielSan": (0.4, 1.1), "Cuyo Cuyo": (0.5, 1.2), "Astral": (0.3, 0.9)}
     for basin, g in W.groupby("basin"):
         assert g.depth_m.between(*depth[basin]).all()
         assert g.di.between(*di[basin]).all() and g.b_factor.between(*b[basin]).all()

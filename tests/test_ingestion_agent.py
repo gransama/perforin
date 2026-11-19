@@ -2,13 +2,13 @@ import pytest
 
 from src.agents.ingestion_agent import IngestionAgent
 
-RAW = dict(basin="permian", formation="Wolfcamp", depth_m=2800, net_pay_m="25", porosity_pct=8.5,
+RAW = dict(basin="neuquién", formation="Oveja Muerta", depth_m=2800, net_pay_m="25", porosity_pct=8.5,
            permeability_md=0.4, skin_factor=2.0, stimulation_type="acidizing", wti_price_usd=65)
 
 
 def test_valid_with_defaults():
     r = IngestionAgent().run(RAW)
-    assert r["basin"] == "Permian" and r["net_pay_m"] == 25.0
+    assert r["basin"] == "Neuquién" and r["net_pay_m"] == 25.0
     assert r["water_saturation_pct"] == 30 and r["proppant_tonnes"] == 0 and r["acid_volume_m3"] == 0
     assert r["well_id"].startswith("WELL-")
 

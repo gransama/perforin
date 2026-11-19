@@ -2,7 +2,7 @@ import pytest
 
 from src.agents import geological_agent as ga
 
-WELL = dict(well_id="NEW-1", basin="Permian", formation="Wolfcamp", depth_m=2600, net_pay_m=27.5,
+WELL = dict(well_id="NEW-1", basin="Neuquién", formation="Oveja Muerta", depth_m=2600, net_pay_m=27.5,
             porosity_pct=9.0, permeability_md=0.1, water_saturation_pct=35, skin_factor=9,
             stimulation_type="acidizing", proppant_tonnes=0, acid_volume_m3=20, wti_price_usd=65)
 
@@ -13,10 +13,10 @@ def test_component_scores():
     assert ga.permeability_score(0.1) == pytest.approx(50)
     assert ga.net_pay_score(5) == 0 and ga.net_pay_score(50) == 100
     assert ga.skin_score(20) == 0 and ga.skin_score(-2) == 100 and ga.skin_score(9) == pytest.approx(50)
-    assert ga.depth_score(2600, "Wolfcamp") == 100
-    assert ga.depth_score(3700, "Wolfcamp") == pytest.approx(50)
-    assert ga.depth_score(5000, "Spraberry") == 0
-    assert ga.depth_score(2000, "3rd Bone Spring") == 100
+    assert ga.depth_score(2600, "Oveja Muerta") == 100
+    assert ga.depth_score(3700, "Oveja Muerta") == pytest.approx(50)
+    assert ga.depth_score(5000, "Lajas Verdes") == 0
+    assert ga.depth_score(2000, "3er Mulichincho") == 100
 
 
 def test_run_output():
