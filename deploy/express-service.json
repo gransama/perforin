@@ -1,0 +1,27 @@
+{
+    "serviceName":  "wellprofit",
+    "executionRoleArn":  "arn:aws:iam::543584168314:role/wellprofit-ecs-exec",
+    "infrastructureRoleArn":  "arn:aws:iam::543584168314:role/wellprofit-ecs-infra",
+    "healthCheckPath":  "/_stcore/health",
+    "cpu":  "2048",
+    "memory":  "4096",
+    "primaryContainer":  {
+                             "image":  "public.ecr.aws/docker/library/python:3.12-slim",
+                             "containerPort":  8501,
+                             "command":  [
+                                             "sh",
+                                             "-c",
+                                             "python -c \"import urllib.request,tarfile,io;tarfile.open(fileobj=io.BytesIO(urllib.request.urlopen(\u0027https://codeload.github.com/gransama/perforin/tar.gz/refs/heads/main\u0027).read())).extractall(\u0027/app\u0027)\" \u0026\u0026 cd /app/perforin-main \u0026\u0026 pip install --no-cache-dir -r requirements.txt \u0026\u0026 streamlit run src/ui/app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true --server.enableCORS false --server.enableXsrfProtection false"
+                                         ]
+                         },
+    "scalingTarget":  {
+                          "minTaskCount":  1,
+                          "maxTaskCount":  1
+                      },
+    "tags":  [
+                 {
+                     "key":  "project",
+                     "value":  "wellprofit"
+                 }
+             ]
+}
